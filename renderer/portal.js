@@ -230,8 +230,8 @@ async function submitAuth() {
     P.server = server; P.prefLogin = v('a-login');
     if (!v('a-login').trim() || !v('a-pass')) throw mkErr('input', 'Введите логин и пароль.');
     if (reg && !v('a-name').trim()) throw mkErr('input', 'Введите имя.');
-    P.busy = true; keepRender();
     const body = reg ? { role: P.role, name: v('a-name'), login: v('a-login'), password: v('a-pass'), invite: v('a-inv') } : { login: v('a-login'), password: v('a-pass') };
+    P.busy = true; keepRender();
     const j = await api('POST', reg ? '/auth/register' : '/auth/login', body, { server: server, token: '' });
     const acc = j.account, acct = { server: server, token: j.token, id: acc.id, role: acc.role, name: acc.name, login: acc.login };
     P.busy = false;
@@ -276,9 +276,10 @@ async function submitReq() {
 async function submitPwd() {
   if (P.busy) return;
   const v = (id) => (document.getElementById(id) || {}).value || '';
+  const oldPw = v('a-old'), newPw = v('a-new');
   P.busy = true; P.err = ''; keepRender();
   try {
-    await api('POST', '/auth/password', { old: v('a-old'), new: v('a-new') });
+    await api('POST', '/auth/password', { old: oldPw, new: newPw });
     P.busy = false; toast('Пароль изменён');
     pwdBack();
   } catch (e) { P.busy = false; if (e.code !== 'expired') { P.err = e.message; keepRender(); } }
