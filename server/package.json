@@ -1,0 +1,17 @@
+{
+  "name": "zhurnal-board-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Сервер совместной доски для журнала репетитора",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "sync": "node sync-web.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

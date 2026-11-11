@@ -1,0 +1,18 @@
+{
+  "name": "zhurnal-repetitora",
+  "productName": "Журнал репетитора",
+  "version": "0.1.0",
+  "description": "Расписание уроков, оплата, переносы с причинами и домашние задания для репетитора",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "app.tutor.journal",
+    "productName": "Журнал репетитора",
+    "files": ["main.js", "preload.js", "renderer/**"],
+    "linux": { "target": ["AppImage"], "category": "Education" },
+    "win": { "target": ["nsis"] }
+  }
+}

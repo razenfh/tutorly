@@ -1,0 +1,7 @@
+node_modules/
+.expo/
+server/data/
+*.env
+.env
+/dist/
+*.bak

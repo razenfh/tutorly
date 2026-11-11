@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Журнал: ученик и родитель",
+    "slug": "zhurnal-uchenik",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.example.zhurnal" },
+    "android": { "package": "com.example.zhurnal" }
+  }
+}
