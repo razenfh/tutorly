@@ -1,92 +1,77 @@
-# Журнал репетитора: десктопный прототип
+# Tutorly
 
-Программа для компьютера (Linux и Windows). Без серверов и аккаунтов: все данные лежат в одном файле на вашем компьютере. Это прототип для согласования: вы пользуетесь, говорите, что менять, потом переносим на телефоны.
+A journal for private tutors: lesson schedule, payments, homework, reschedules with reasons, and a shared whiteboard. Students and parents get their own accounts and see their lessons, homework and why a lesson was moved.
 
-В программе: расписание по неделям, кнопки «Проведён» и «Оплачен», перенос урока с причиной, отмена, долги и напоминание об оплате, домашние задания, карточки учеников. Для каждого ученика можно сохранить файл с его занятиями, домашкой и причинами переносов и отправить его ему или родителям. Живой доступ учеников и родителей появится на этапе с телефонами.
+[Русская версия](README.ru.md) · The app interface is in Russian.
 
-## Аккаунты: ученик, родитель, учитель
+## What's inside
 
-При первом запуске программа спрашивает, кто вы: «я ученик», «я родитель» или «я учитель». Нужен сервер (см. `server/README.md`): его адрес можно вписать в `renderer/config.js`, тогда он подставится сам, иначе его вводят при входе.
+| Part | Folder | What it is |
+| --- | --- | --- |
+| Desktop app | `main.js`, `renderer/` | Electron app for Linux and Windows, used by the teacher |
+| Server | `server/` | Node.js server: accounts, journal sync, shared whiteboard |
+| Mobile app | `mobile/` | Expo (React Native) app for iPhone and Android: teacher, student and parent |
 
-- Учитель создаёт аккаунт, работает как раньше, а данные синхронизируются с сервером. В карточке ученика кнопка «Курс: коды и участники» показывает код ученика и код родителя, список участников, сброс их паролей. «Название курса» задаётся в карточке ученика.
-- Ученик и родитель создают аккаунт и вводят код курса: появляются карточки курсов как в Classroom. Ученик отмечает «сдал(а)» и открывает доску урока, родитель только смотрит.
-- Кто хочет работать без сервера, выбирает внизу «только на этом компьютере».
-- Если на компьютере данные одного учителя, а входит другой, программа предложит удалить старые данные.
-- Старые настройки с ключом администратора больше не нужны: теперь вход по аккаунту. Копии данных не содержат вход в аккаунт.
+## Features
 
-## Переносы по запросу и приложение на телефон
+- **Teacher:** weekly schedule, "done" and "paid" marks, reschedule or cancel with a reason, debts and payment reminders, homework with statuses, per-lesson whiteboard.
+- **Courses, Classroom-style:** one course is one student. The teacher gives the student and the parent a join code; they register and see the course.
+- **Student:** lessons, reschedules with reasons, homework (can mark "done"), requests to move a lesson, the lesson board and boards of past lessons.
+- **Parent:** the same view, read-only.
+- **Reschedule requests:** a student or parent asks to move a lesson; the teacher accepts with one tap or declines with a reply.
+- **Whiteboard:** infinite canvas with Miro-style hotkeys, saved per lesson, real-time collaboration, PNG export.
+- **Sync:** teacher data is shared between desktop and phone through the server (last write wins).
+- **Works offline on one computer:** the desktop app can run without a server, with data in a single local file.
 
-Ученик или родитель может попросить перенести урок: в программе учителя появляется плашка «Запросы на перенос», где одним нажатием урок переносится или запрос отклоняется с ответом. Доски прошлых уроков ученик открывает в своём курсе (доска сохраняется на сервере, если вы включали совместную работу). Приложение для телефонов (для учителя, ученика и родителя) лежит в папке `mobile` (см. её README).
+## Quick start
 
-## Доска к уроку
+### 1. Server
 
-На карточке урока (и внутри урока) есть кнопка «Доска». Она открывается на весь экран. Полотно бесконечное: его можно двигать и масштабировать. Объекты можно выбирать, перетаскивать и менять им размер, как в Miro.
-
-Что есть: ручка, линия, стрелка, прямоугольник, овал, текст, стикер, ластик (стирает объект целиком), выбор рамкой, 5 цветов, заливка, 3 толщины, фон (точки, клетка, чистый, оси координат), панель математических символов при вводе текста (√ ² π ≤ и другие). Двойной клик по пустому месту создаёт текст, по фигуре, стикеру или тексту открывает редактирование.
-
-Горячие клавиши (как в Miro):
-
-- Инструменты: V выбор, H рука, P ручка, E ластик, T текст, N стикер, R или S прямоугольник, O овал, L линия, Shift+L стрелка.
-- Правка: Ctrl+Z отмена, Ctrl+Shift+Z или Ctrl+Y возврат, Ctrl+C, Ctrl+V, Ctrl+D дублировать, Ctrl+A выделить всё, Delete или Backspace удалить, Esc снять выделение (или закрыть доску), Enter или F2 править текст выбранного объекта.
-- Положение и порядок: стрелки двигают выбранное на 1 (с Shift на 10), без выбора двигают полотно; Page Up наверх, Page Down вниз.
-- Масштаб: колесо мыши, Ctrl+плюс, Ctrl+минус, Ctrl+0 это 100%, Ctrl+1 показать всё, Ctrl+2 показать выбранное. Двигать полотно: зажатый пробел, средняя кнопка мыши или инструмент «Рука».
-- G включает и выключает сетку. Shift при рисовании линии даёт углы кратные 45°, при рисовании фигуры квадрат или круг.
-
-Доска сохраняется сама, отдельным файлом на каждый урок (папка `boards` рядом с `journal.json`) вместе с положением камеры. Если на доске что-то есть, кнопка «Доска» в уроке подсвечена. При удалении урока его доска удаляется. «Сохранить копию данных» включает и все доски, «Загрузить из копии» их возвращает. Всю доску можно сохранить картинкой (PNG).
-
-## Совместная доска с учеником
-
-Нужен свой сервер (VPS). Папка `server` в этом архиве это готовый сервер и инструкция по установке (`server/README.md`). Когда он работает, впишите его адрес и ключ в настройках программы. В доске появится кнопка «Совместная доска»: она подключает вас, копирует ссылку для ученика, дальше вы рисуете вместе в реальном времени. Ученику ничего устанавливать не нужно, достаточно открыть ссылку в браузере. Права ученика (рисовать или только смотреть) переключаются кнопкой в доске.
-
-Без сервера доска работает только на этом компьютере.
-
-## Синхронизация с сервером и страница ученика
-
-Тот же сервер хранит ваш журнал. Если в настройках указаны адрес и ключ, программа сама отправляет туда ученики, уроки, оплаты и домашку и получает изменения обратно (раз в минуту и после каждой правки). Без сети всё работает как раньше, данные лежат у вас на компьютере. В строке под названием видно состояние: «синхронизировано» или «нет связи с сервером».
-
-В карточке ученика появляется кнопка «Живая ссылка»: постоянная страница для ученика и родителей с актуальными уроками, переносами с причинами и домашкой, где можно отметить «сдал(а)». Ссылку можно сменить в любой момент. Оплата на странице показывается, только если вы включили.
-
-Подробности и установка: `server/README.md`.
-
-## Запуск на Arch Linux
+Requires Node.js 18 or newer.
 
 ```
-sudo pacman -S nodejs npm
-cd tutor-desktop
-npm install --save-dev electron electron-builder
-npm start
+cd server
+npm install
+ADMIN_TOKEN=$(openssl rand -base64 24) npm start
 ```
 
-Если Electron ругается на `chrome-sandbox`, запустите так: `npx electron . --no-sandbox`.
+For a VPS setup (systemd, Caddy, HTTPS), accounts, roles and the admin CLI, see [`server/README.md`](server/README.md) (Russian).
 
-## Запуск на Windows
-
-Установите Node.js с nodejs.org, затем в папке проекта в терминале:
+### 2. Desktop app
 
 ```
 npm install --save-dev electron electron-builder
 npm start
 ```
 
-## Установочный файл (по желанию)
+On Arch Linux, if Electron complains about `chrome-sandbox`: `npx electron . --no-sandbox`.
+Build an installer with `npm run dist` (AppImage on Linux, `.exe` on Windows).
 
-Собирайте на той системе, для которой нужен файл:
+On first launch choose a role (student, parent or teacher) and enter the server address, or pick "work only on this computer". To pre-fill the address, set it in `renderer/config.js`.
+
+### 3. Mobile app
+
+See [`mobile/README.md`](mobile/README.md) (Russian). In short:
 
 ```
-npm run dist
+npx create-expo-app@latest tutorly-mobile --template blank
+cd tutorly-mobile
+npx expo install react-native-webview expo-secure-store expo-crypto
+# copy App.js, src/ and app.json from ./mobile, then:
+npx expo start
 ```
 
-На Linux получится `dist/*.AppImage` (для запуска на Arch нужен пакет `fuse2`), на Windows установщик `.exe`.
+## Accounts and security
 
-## Где лежат данные
+- Registration by login and password, no email. A forgotten password is reset by the teacher (for students and parents) or by the server admin (`node server/admin.js reset <login>`).
+- Passwords are hashed with scrypt, session tokens are stored hashed. Each teacher's data is stored separately.
+- Set `TEACHER_INVITE` on the server to restrict who can register as a teacher.
+- Parents have read-only access. Notes, prices and contacts are never sent to students or parents.
 
-- Linux: `~/.config/zhurnal-repetitora/journal.json`
-- Windows: `%APPDATA%\zhurnal-repetitora\journal.json`
+## Status
 
-В настройках (шестерёнка) есть «Сохранить копию данных», «Загрузить из копии» и «Открыть папку с данными». Копию удобно делать после важных изменений и при переходе на другой компьютер. Рядом с файлом данных программа держит `journal.json.bak`, предыдущую версию.
+A working prototype. The server flows are covered by end-to-end tests run against a real server; the desktop and mobile UIs have not yet been tested on real devices, so expect rough edges.
 
-## Первый запуск
+## License
 
-В пустой программе нажмите «Показать пример»: появятся три ученика с уроками, переносом и домашкой. Примеры удаляются в настройках.
-
-Шрифты (Caveat и Golos Text) подгружаются из интернета. Без сети программа работает на обычных системных шрифтах.
+No license has been chosen yet. All rights reserved by the author until one is added.
