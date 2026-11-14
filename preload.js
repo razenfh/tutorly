@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   save: (text) => ipcRenderer.invoke('data:save', text),
   saveSync: (text) => ipcRenderer.sendSync('data:saveSync', text),
   copy: (text) => ipcRenderer.invoke('copy', text),
+  clipboardImage: () => ipcRenderer.invoke('clipboard:image'),
   saveHtml: (name, html) => ipcRenderer.invoke('file:saveHtml', name, html),
   exportBackup: (text) => ipcRenderer.invoke('backup:export', text),
   importBackup: () => ipcRenderer.invoke('backup:import'),

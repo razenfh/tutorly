@@ -14,6 +14,11 @@ const KEYS = { KeyV: 'select', KeyH: 'hand', KeyP: 'pen', KeyL: 'line', KeyS: 'r
 const FONT = '"Golos Text", system-ui, "Segoe UI", sans-serif';
 const NOTE_FILL = '#FFF1A8';
 const ZMIN = 0.1, ZMAX = 4;
+/* Картинки хранятся прямо в объекте как data-URL: так они попадают и в файл доски, и на сервер, и в PNG.
+   Перед вставкой картинка уменьшается (до IMG_MAXDIM по длинной стороне) и сжимается так, чтобы
+   data-URL не превышал IMG_MAXLEN (на сервере для объекта-картинки лимит 500 000 символов). */
+const IMG_SRC = /^data:image\/(?:png|jpeg|webp|gif);base64,/;
+const IMG_MAXDIM = 1600, IMG_MAXLEN = 450000, IMG_IN_MAX = 25 * 1024 * 1024, IMG_FILES_MAX = 10, MAX_ELS = 4900;
 
 const $ = (id) => document.getElementById(id);
 const num = (v) => typeof v === 'number' && isFinite(v);
@@ -23,6 +28,9 @@ let st = null;
 let attached = false;
 let drawQueued = false;
 let clipboard = null; // общий буфер для всех досок
+const imgCache = new Map(); // src -> HTMLImageElement (чтобы не декодировать картинку при каждой перерисовке)
+const srcIds = new Map(), srcList = []; // src <-> короткий номер: в снимках отмены и сигнатурах синхронизации не копируем мегабайты
+const srcRef = (s) => { let i = srcIds.get(s); if (i === undefined) { i = srcList.length; srcList.push(s); srcIds.set(s, i); } return i; };
 let uidN = 0;
 const nid = () => 'e' + Date.now().toString(36) + (uidN++).toString(36) + Math.random().toString(36).slice(2, 4);
 const hasText = (el) => el.k === 'text' || el.k === 'note' || el.k === 'rect' || el.k === 'ellipse';
@@ -90,7 +98,7 @@ function hit(el, x, y, tol) {
       return false;
     }
     case 'line': return dist2seg(x, y, el.a[0], el.a[1], el.b[0], el.b[1]) <= el.sw / 2 + tol;
-    case 'note': return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
+    case 'note': case 'image': return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
     case 'rect': {
       if (el.f) return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
       const m = el.sw / 2 + tol, x2 = el.x + el.w, y2 = el.y + el.h;
@@ -111,7 +119,7 @@ function hit(el, x, y, tol) {
   }
   return false;
 }
-function copyEl(el) { return JSON.parse(JSON.stringify(el)); }
+function copyEl(el) { return el.k === 'image' ? Object.assign({}, el) : JSON.parse(JSON.stringify(el)); } // src — неизменяемая строка, её копировать не нужно
 function moveEl(el, o, dx, dy) {
   if (el.k === 'pen') el.p = o.p.map((v, i) => v + (i % 2 ? dy : dx));
   else if (el.k === 'line') { el.a = [o.a[0] + dx, o.a[1] + dy]; el.b = [o.b[0] + dx, o.b[1] + dy]; }
@@ -128,6 +136,13 @@ function resizeEl(el, o, h, px, py) {
     el.s = Math.max(8, Math.min(400, o.s * sc));
     el.x = h.indexOf('w') >= 0 ? fx - b.w * sc : fx;
     el.y = h.indexOf('n') >= 0 ? fy - b.h * sc : fy;
+    return;
+  }
+  if (el.k === 'image') { // картинку тянем с сохранением пропорций
+    const sc = Math.max(20 / Math.min(b.w, b.h), Math.abs(px - fx) / b.w, Math.abs(py - fy) / b.h);
+    el.w = b.w * sc; el.h = b.h * sc;
+    el.x = h.indexOf('w') >= 0 ? fx - el.w : fx;
+    el.y = h.indexOf('n') >= 0 ? fy - el.h : fy;
     return;
   }
   const nx = Math.min(px, fx), ny = Math.min(py, fy);
@@ -160,8 +175,16 @@ function cleanEl(e) {
     case 'text':
       if (!num(e.x) || !num(e.y) || typeof e.t !== 'string') return null;
       return Object.assign(base, { c: c, x: e.x, y: e.y, t: e.t.slice(0, 5000), s: num(e.s) ? Math.max(8, Math.min(400, e.s)) : 28 });
+    case 'image': // src может быть пустым: так сервер присылает только новое положение уже известной картинки
+      if (![e.x, e.y, e.w, e.h].every(num) || e.w < 1 || e.h < 1 || e.w > 50000 || e.h > 50000) return null;
+      return Object.assign(base, { x: e.x, y: e.y, w: e.w, h: e.h, src: typeof e.src === 'string' && IMG_SRC.test(e.src) ? e.src : '' });
   }
   return null;
+}
+/* то же, но картинка без данных (src пустой) не годится: показывать нечего */
+function cleanFull(e) {
+  const c = cleanEl(e);
+  return c && !(c.k === 'image' && !c.src) ? c : null;
 }
 function sanitizeData(d) {
   const out = { bg: 'dots', view: null, els: [] };
@@ -190,7 +213,7 @@ function sanitizeData(d) {
   if (Array.isArray(d.els)) {
     const seen = {};
     d.els.forEach((e) => {
-      const c = cleanEl(e);
+      const c = cleanFull(e);
       if (!c) return;
       if (seen[c.id]) c.id = nid();
       seen[c.id] = 1;
@@ -254,10 +277,42 @@ function drawBoxText(ctx, el) {
   lines.forEach((l, i) => ctx.fillText(l, el.x + el.w / 2, y + i * lh));
   ctx.restore();
 }
+function imgFor(src) {
+  let im = imgCache.get(src);
+  if (!im) {
+    im = new Image();
+    im.onload = () => { if (st) schedDraw(); };
+    im.onerror = () => {};
+    im.src = src;
+    imgCache.set(src, im);
+  }
+  return im;
+}
+/* дожидается загрузки всех картинок (нужно перед экспортом в PNG, который рисуется сразу) */
+function loadImgs(els) {
+  return Promise.all(els.filter((e) => e.k === 'image').map((e) => {
+    const im = imgFor(e.src);
+    if (im.complete) return null;
+    return new Promise((res) => { im.addEventListener('load', res); im.addEventListener('error', res); });
+  }));
+}
 function drawEl(ctx, el, skipText) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.strokeStyle = el.c; ctx.fillStyle = el.c; ctx.lineWidth = el.sw || 1;
   switch (el.k) {
+    case 'image': {
+      const im = imgFor(el.src);
+      if (im.complete && im.naturalWidth) {
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(im, el.x, el.y, el.w, el.h);
+      } else { // ещё грузится или не открылась
+        ctx.save();
+        ctx.fillStyle = '#eef1f6'; ctx.strokeStyle = '#b7c2d4'; ctx.lineWidth = 1;
+        ctx.fillRect(el.x, el.y, el.w, el.h); ctx.strokeRect(el.x, el.y, el.w, el.h);
+        ctx.restore();
+      }
+      break;
+    }
     case 'pen': {
       const p = el.p;
       if (p.length < 4) { ctx.beginPath(); ctx.arc(p[0], p[1], el.sw / 2, 0, Math.PI * 2); ctx.fill(); break; }
@@ -455,10 +510,13 @@ function fit() {
 }
 
 /* ---------- история ---------- */
-const snap = () => JSON.stringify(st.els);
+/* В снимке картинка заменяется номером '@@img:N' (см. srcRef), иначе 60 шагов отмены держали бы 60 копий каждой картинки */
+const snap = () => JSON.stringify(st.els.map((e) => (e.k === 'image' ? Object.assign({}, e, { src: '@@img:' + srcRef(e.src) }) : e)));
 function pushSnap() { const h = st.hist; h.u.push(snap()); if (h.u.length > 60) h.u.shift(); h.r = []; }
 function restore(text) {
   let next = JSON.parse(text);
+  next.forEach((e) => { if (e.k === 'image' && typeof e.src === 'string' && e.src.slice(0, 6) === '@@img:') e.src = srcList[Number(e.src.slice(6))] || ''; });
+  next = next.filter((e) => e.k !== 'image' || e.src);
   if (st.sync) { // при совместной работе отмена не трогает то, что нарисовали другие
     const ri = st.sync.remote, have = {};
     next.forEach((e) => { have[e.id] = 1; });
@@ -501,9 +559,17 @@ function delSel() {
   st.sel = [];
   changed();
 }
-function copySel() {
+/* Ctrl+C на доске: объекты кладём во внутренний буфер, а системный очищаем, иначе старый скриншот
+   в системном буфере «перебил» бы вставку скопированных объектов */
+function clearSysClipboard() {
+  try {
+    const p = window.api && window.api.copy ? window.api.copy('') : (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText('') : null);
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* ignore */ }
+}
+function copySel(sys) {
   const els = selEls();
-  if (els.length) { clipboard = els.map(copyEl); st.pasteN = 0; }
+  if (els.length) { clipboard = els.map(copyEl); st.pasteN = 0; if (sys) clearSysClipboard(); }
 }
 function pasteClip(offset) {
   if (!clipboard || !clipboard.length) return;
@@ -519,7 +585,7 @@ function pasteClip(offset) {
   st.sel = made.map((c) => c.id);
   changed();
 }
-function dupSel() { copySel(); pasteClip(30); }
+function dupSel() { copySel(false); pasteClip(30); }
 function toFront(back) {
   const sel = selEls();
   if (!sel.length) return;
@@ -530,9 +596,141 @@ function toFront(back) {
 }
 function setStyle(prop, val) {
   if (prop === 'c') st.color = val; else if (prop === 'f') st.fill = val; else st.width = val;
-  const ok = (el) => (prop === 'c' ? true : prop === 'f' ? (el.k === 'rect' || el.k === 'ellipse' || (el.k === 'note' && val)) : el.k !== 'text' && el.k !== 'note');
+  const ok = (el) => el.k !== 'image' && (prop === 'c' ? true : prop === 'f' ? (el.k === 'rect' || el.k === 'ellipse' || (el.k === 'note' && val)) : el.k !== 'text' && el.k !== 'note');
   const target = selEls().filter((el) => ok(el) && el[prop] !== val);
   if (target.length) { pushSnap(); target.forEach((el) => { el[prop] = val; }); changed(); } else updateUi();
+}
+
+/* ---------- картинки ---------- */
+const toast = (t) => { if (window.toast) window.toast(t); };
+const isImgFile = (f) => f && typeof f.type === 'string' && f.type.indexOf('image/') === 0 && f.type.indexOf('svg') < 0;
+function imageFiles(dt) { // картинки из буфера обмена или перетаскивания
+  const out = [];
+  if (!dt) return out;
+  if (dt.items && dt.items.length) {
+    Array.from(dt.items).forEach((it) => { if (it.kind === 'file' && it.type.indexOf('image/') === 0 && it.type.indexOf('svg') < 0) { const f = it.getAsFile(); if (f) out.push(f); } });
+  }
+  if (!out.length && dt.files) Array.from(dt.files).forEach((f) => { if (isImgFile(f)) out.push(f); });
+  return out;
+}
+const hasFiles = (dt) => !!dt && Array.from(dt.types || []).indexOf('Files') >= 0;
+function readDataUrl(file) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result));
+    fr.onerror = () => rej(new Error('Не удалось прочитать файл'));
+    fr.readAsDataURL(file);
+  });
+}
+function decodeImg(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error('Не удалось открыть картинку: такой формат не поддерживается'));
+    im.src = url;
+  });
+}
+/* Уменьшает картинку и кодирует так, чтобы data-URL влез в IMG_MAXLEN: фото и скриншоты в JPEG,
+   картинки с прозрачностью в WebP (или PNG, если браузер не умеет WebP). */
+function encodeImage(im) {
+  const nw = im.naturalWidth, nh = im.naturalHeight;
+  if (!nw || !nh) throw new Error('Не удалось открыть картинку');
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+  let alpha = false;
+  { // есть ли прозрачность: смотрим на маленькую копию
+    const t = Math.min(1, 64 / Math.max(nw, nh));
+    cv.width = Math.max(1, Math.round(nw * t)); cv.height = Math.max(1, Math.round(nh * t));
+    ctx.drawImage(im, 0, 0, cv.width, cv.height);
+    const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] < 250) { alpha = true; break; }
+  }
+  let sc = Math.min(1, IMG_MAXDIM / Math.max(nw, nh));
+  for (let step = 0; step < 12; step++) {
+    const w = Math.max(1, Math.round(nw * sc)), h = Math.max(1, Math.round(nh * sc));
+    cv.width = w; cv.height = h;
+    if (!alpha) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); }
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(im, 0, 0, w, h);
+    const qs = alpha ? [0.9, 0.75] : [0.88, 0.75, 0.6];
+    for (let i = 0; i < qs.length; i++) {
+      let url = cv.toDataURL(alpha ? 'image/webp' : 'image/jpeg', qs[i]);
+      if (alpha && url.indexOf('data:image/webp') !== 0) url = cv.toDataURL('image/png');
+      if (url.length <= IMG_MAXLEN) return { src: url, w: w, h: h };
+      if (url.indexOf('data:image/png') === 0) break; // у PNG нет качества, остаётся только уменьшать
+    }
+    sc *= 0.8;
+  }
+  throw new Error('Картинка слишком сложная. Уменьшите её и попробуйте снова');
+}
+async function prepImage(src) { // src: File или data-URL
+  let url = src;
+  if (typeof src !== 'string') {
+    if (!isImgFile(src)) throw new Error('Это не картинка. Подойдут PNG, JPEG, WebP, GIF');
+    if (src.size > IMG_IN_MAX) throw new Error('Картинка больше 25 МБ');
+    url = await readDataUrl(src);
+  } else if (!/^data:image\/(?:png|jpeg|webp|gif|bmp);base64,/.test(src)) throw new Error('Не удалось вставить картинку');
+  return encodeImage(await decodeImg(url));
+}
+function addImage(r, at, n) {
+  const z = st.view.z, sc = Math.min(1, (st.w / z * 0.6) / r.w, (st.h / z * 0.7) / r.h); // не больше ~60% видимой области
+  const w = Math.max(1, Math.round(r.w * sc)), h = Math.max(1, Math.round(r.h * sc));
+  const c = at || wld([st.w / 2, st.h / 2]), off = n * 30;
+  const el = { id: nid(), k: 'image', x: rnd(c[0] - w / 2 + off), y: rnd(c[1] - h / 2 + off), w: w, h: h, src: r.src };
+  pushSnap();
+  st.els.push(el);
+  st.sel = [el.id]; st.tool = 'select';
+  changed();
+}
+/* files: File или data-URL; at: точка на доске (при перетаскивании), иначе центр видимой области */
+async function insertImages(files, at) {
+  const s = st;
+  if (!s || s.readonly || !files.length) return;
+  commitEdit();
+  let n = 0, fail = '';
+  for (const f of files.slice(0, IMG_FILES_MAX)) {
+    if (s.els.length >= MAX_ELS) { fail = 'На доске слишком много объектов'; break; }
+    try {
+      const r = await prepImage(f);
+      if (st !== s || s.readonly) return;
+      addImage(r, at, n++);
+    } catch (err) { fail = err && err.message ? err.message : 'Не удалось вставить картинку'; }
+  }
+  if (st === s && fail) toast(fail);
+}
+let imgInput = null;
+function pickImage() {
+  if (!st || st.readonly || !imgInput) return;
+  commitEdit();
+  imgInput.click();
+}
+/* Ctrl+V: если событие paste не пришло (в Electron без меню так бывает), через 250 мс вставляем сами */
+function pasteFallback() {
+  if (!st || st.readonly) return;
+  const api = window.api;
+  if (api && api.clipboardImage) api.clipboardImage().then((url) => { if (url) insertImages([url]); else pasteClip(); }, () => pasteClip());
+  else pasteClip();
+}
+function onPaste(e) {
+  if (!st) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return; // в поле текста вставляется как обычно
+  clearTimeout(st.pendingPaste); st.pendingPaste = 0;
+  e.preventDefault();
+  if (st.readonly) return;
+  const files = imageFiles(e.clipboardData);
+  if (files.length) insertImages(files); else pasteClip();
+}
+function onDragOver(e) {
+  if (!st || !hasFiles(e.dataTransfer)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = st.readonly ? 'none' : 'copy';
+}
+function onDrop(e) {
+  if (!st || !hasFiles(e.dataTransfer)) return;
+  e.preventDefault(); // иначе окно откроет файл вместо доски
+  if (st.readonly) return;
+  const files = imageFiles(e.dataTransfer);
+  if (files.length) insertImages(files, wld(scr(e))); else toast('Это не картинка. Подойдут PNG, JPEG, WebP, GIF');
 }
 
 /* ---------- текст на объектах ---------- */
@@ -647,7 +845,7 @@ function finishCreate(d, shift) {
 /* ---------- указатель ---------- */
 function eraseAt(p, d) {
   const tol = 10 / st.view.z;
-  const keep = st.els.filter((el) => !hit(el, p[0], p[1], tol));
+  const keep = st.els.filter((el) => el.k === 'image' || !hit(el, p[0], p[1], tol)); // ластик стирает рисунок, но не картинку под ним (её удаляют через выбор и Delete)
   if (keep.length !== st.els.length) {
     if (!d.snapped) { pushSnap(); d.snapped = true; }
     st.els = keep;
@@ -816,7 +1014,8 @@ function onWheel(e) {
 
 /* ---------- панель ---------- */
 function toolbarHtml() {
-  const tools = TOOLS.map((t) => '<button class="bt" data-b="tool" data-v="' + t[0] + '" title="' + t[1] + ' (' + t[2] + ')">' + t[1] + '</button>').join('');
+  const tools = TOOLS.map((t) => '<button class="bt" data-b="tool" data-v="' + t[0] + '" title="' + t[1] + ' (' + t[2] + ')">' + t[1] + '</button>').join('')
+    + '<button class="bt" data-b="image" id="bImage" title="Вставить картинку (I). Ещё можно Ctrl+V или перетащить файл на доску">Картинка</button>';
   const colors = INK.map((c) => '<button class="sw" data-b="color" data-v="' + c[0] + '" style="background:' + c[0] + '" aria-label="' + c[1] + '" title="' + c[1] + '"></button>').join('');
   const fills = FILLS.map((c) => '<button class="sw' + (c[0] ? '' : ' none') + '" data-b="fill" data-v="' + (c[0] || 'none') + '"' + (c[0] ? ' style="background:' + c[0] + '"' : '') + ' aria-label="' + c[1] + '" title="Заливка: ' + c[1] + '"></button>').join('');
   const widths = WIDTHS.map((w) => '<button class="bt" data-b="width" data-v="' + w[0] + '">' + w[1] + '</button>').join('');
@@ -832,7 +1031,7 @@ function toolbarHtml() {
 }
 function styleOf() {
   const e = st.edit ? null : selEls()[0];
-  if (!e) return { c: st.color, f: st.fill, sw: st.width };
+  if (!e || e.k === 'image') return { c: st.color, f: st.fill, sw: st.width };
   return { c: e.c, f: e.f || null, sw: e.sw };
 }
 function updateUi() {
@@ -864,6 +1063,7 @@ function onTools(e) {
   const v = b.dataset.v;
   switch (b.dataset.b) {
     case 'tool': commitEdit(); st.tool = v; if (v !== 'select') st.sel = []; draw(); break;
+    case 'image': pickImage(); break;
     case 'color': setStyle('c', v); break;
     case 'fill': setStyle('f', v === 'none' ? null : v); break;
     case 'width': setStyle('sw', Number(v)); break;
@@ -886,8 +1086,12 @@ function onKey(e) {
     const k = e.code;
     if (k === 'KeyZ') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     else if (k === 'KeyY') { e.preventDefault(); redo(); }
-    else if (k === 'KeyC') { e.preventDefault(); copySel(); }
-    else if (k === 'KeyV') { e.preventDefault(); pasteClip(); }
+    else if (k === 'KeyC') { e.preventDefault(); copySel(true); }
+    else if (k === 'KeyV') { // сами не вставляем: ждём событие paste (там может быть картинка), а если оно не придёт, вставит pasteFallback
+      const s = st;
+      clearTimeout(s.pendingPaste);
+      s.pendingPaste = setTimeout(() => { s.pendingPaste = 0; if (st === s) pasteFallback(); }, 250);
+    }
     else if (k === 'KeyD') { e.preventDefault(); dupSel(); }
     else if (k === 'KeyA') { e.preventDefault(); st.tool = 'select'; st.sel = st.els.map((x) => x.id); updateUi(); draw(); }
     else if (k === 'Digit0' || k === 'Numpad0') { e.preventDefault(); st.view.z = 1; viewChanged(); }
@@ -926,6 +1130,7 @@ function onKey(e) {
   }
   if ((e.code === 'Equal' || e.code === 'NumpadAdd') && !e.altKey) { zoomAt(1.25, st.w / 2, st.h / 2); return; }
   if (e.code === 'Minus' || e.code === 'NumpadSubtract') { zoomAt(0.8, st.w / 2, st.h / 2); return; }
+  if (e.code === 'KeyI' && !e.altKey && !e.shiftKey) { e.preventDefault(); pickImage(); return; }
   if (e.code === 'KeyL' && e.shiftKey) { commitEdit(); st.tool = 'arrow'; st.sel = []; draw(); updateUi(); return; }
   if (KEYS[e.code] && !e.altKey && !e.shiftKey) { commitEdit(); st.tool = KEYS[e.code]; if (st.tool !== 'select') st.sel = []; draw(); updateUi(); }
 }
@@ -979,6 +1184,18 @@ function attachOnce() {
     if (st && st.shareLink && window.api && window.api.copy) window.api.copy(st.shareLink).then(() => { if (window.toast) window.toast('Ссылка для ученика скопирована'); });
   });
   on('bWrite', 'click', () => { if (st && st.sync && st.sync.ready && st.sync.role === 'tutor') st.sync.send({ t: 'perm', write: !st.canWrite }); });
+  imgInput = document.createElement('input');
+  imgInput.type = 'file'; imgInput.accept = 'image/png,image/jpeg,image/webp,image/gif,image/bmp'; imgInput.multiple = true; imgInput.hidden = true;
+  imgInput.setAttribute('aria-label', 'Выбрать картинку');
+  $('board').appendChild(imgInput);
+  imgInput.addEventListener('change', () => {
+    const files = Array.from(imgInput.files || []);
+    imgInput.value = '';
+    if (files.length) insertImages(files);
+  });
+  document.addEventListener('paste', onPaste);
+  $('board').addEventListener('dragover', onDragOver);
+  $('board').addEventListener('drop', onDrop);
   document.addEventListener('keydown', onKey);
   document.addEventListener('keyup', onKeyUp);
   window.addEventListener('beforeunload', () => {
@@ -992,6 +1209,7 @@ function attachOnce() {
 async function open(opts) {
   if (st) return;
   attachOnce();
+  imgCache.clear(); srcIds.clear(); srcList.length = 0; // кэши картинок прошлой доски не нужны
   const s = st = {
     id: opts.id, title: opts.title || '', onContent: opts.onContent, onClose: opts.onClose,
     els: [], sel: [], bg: 'dots', view: { x: -400, y: -250, z: 1 }, tool: 'select', color: INK[0][0], fill: null, width: 4,
@@ -1031,26 +1249,31 @@ async function close() {
   const s = st;
   await flush();
   if (s.sync) { clearInterval(s.sync.timer); s.sync = null; }
+  clearTimeout(s.pendingPaste);
   st = null;
+  imgCache.clear(); srcIds.clear(); srcList.length = 0;
   $('board').hidden = true;
   document.documentElement.style.overflow = '';
   try { if (s.focus && s.focus.focus) s.focus.focus(); } catch (e) { /* ignore */ }
   if (s.onClose) s.onClose();
 }
-function exportPng() {
+async function exportPng() {
   if (!st) return;
   commitEdit();
   if (!st.els.length) { if (window.toast) window.toast('Доска пустая'); return; }
-  const b = selRect(st.els), pad = 40;
+  const s = st, els = st.els.slice(), bgName = st.bg, title = st.title;
+  await loadImgs(els); // картинки должны успеть загрузиться, PNG рисуется сразу
+  if (st !== s) return;
+  const b = selRect(els), pad = 40;
   const bw = b.w + pad * 2, bh = b.h + pad * 2;
   const sc = Math.min(2, 4000 / Math.max(bw, bh));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.ceil(bw * sc)); c.height = Math.max(1, Math.ceil(bh * sc));
   const ctx = c.getContext('2d');
   ctx.scale(sc, sc); ctx.translate(-(b.x - pad), -(b.y - pad));
-  drawBg(ctx, st.bg, b.x - pad, b.y - pad, bw, bh, sc);
-  st.els.forEach((el) => drawEl(ctx, el, false));
-  const name = (st.title || 'доска').replace(/[\\/:*?"<>|]/g, '').trim() + '.png';
+  drawBg(ctx, bgName, b.x - pad, b.y - pad, bw, bh, sc);
+  els.forEach((el) => drawEl(ctx, el, false));
+  const name = (title || 'доска').replace(/[\\/:*?"<>|]/g, '').trim() + '.png';
   window.api.savePng(name, c.toDataURL('image/png')).then(
     (r) => { if (r && r.ok && window.toast) window.toast('Картинка сохранена'); },
     () => { if (window.toast) window.toast('Не удалось сохранить картинку'); });
@@ -1107,13 +1330,29 @@ function syncTick() {
   const set = [], del = [], seen = {};
   st.els.forEach((el) => {
     seen[el.id] = 1;
-    const js = JSON.stringify(el);
+    const js = sigOf(el);
     if (sy.last.get(el.id) !== js) { set.push(el); sy.last.set(el.id, js); }
   });
   sy.last.forEach((v, id) => { if (!seen[id]) del.push(id); });
-  del.forEach((id) => sy.last.delete(id));
-  for (let i = 0; i < set.length; i += 200) sy.send({ t: 'ops', set: set.slice(i, i + 200), del: [] });
+  del.forEach((id) => { sy.last.delete(id); sy.sent.delete(id); });
+  /* Картинку (сотни КБ) отправляем один раз, отдельным сообщением; при перемещении и изменении размера уходят только координаты */
+  const light = [];
+  set.forEach((el) => {
+    const w = wireEl(sy, el);
+    if (w.k === 'image' && w.src) sy.send({ t: 'ops', set: [w], del: [] }); else light.push(w);
+  });
+  for (let i = 0; i < light.length; i += 200) sy.send({ t: 'ops', set: light.slice(i, i + 200), del: [] });
   for (let i = 0; i < del.length; i += 1000) sy.send({ t: 'ops', set: [], del: del.slice(i, i + 1000) });
+}
+/* подпись объекта для сравнения «изменился ли»; у картинки вместо мегабайт src — его номер */
+function sigOf(el) { return JSON.stringify(el.k === 'image' ? Object.assign({}, el, { src: srcRef(el.src) }) : el); }
+/* что уходит в сеть: картинка, которую сервер уже получил, едет без данных */
+function wireEl(sy, el) {
+  if (el.k !== 'image') return el;
+  const r = srcRef(el.src);
+  if (sy.sent.get(el.id) === r) return Object.assign({}, el, { src: '' });
+  sy.sent.set(el.id, r);
+  return el;
 }
 function applyRemote(m) {
   const sy = st.sync;
@@ -1121,15 +1360,19 @@ function applyRemote(m) {
     const c = cleanEl(e);
     if (!c) return;
     const i = st.els.findIndex((x) => x.id === c.id);
+    if (c.k === 'image') {
+      if (!c.src) { if (i < 0 || st.els[i].k !== 'image') return; c.src = st.els[i].src; } // пришло только положение, данные уже у нас
+      sy.sent.set(c.id, srcRef(c.src));
+    }
     if (i >= 0) st.els[i] = c; else st.els.push(c);
-    sy.last.set(c.id, JSON.stringify(c));
+    sy.last.set(c.id, sigOf(c));
     sy.remote.add(c.id);
   });
   (Array.isArray(m.del) ? m.del : []).forEach((id) => {
     if (typeof id !== 'string') return;
     const i = st.els.findIndex((x) => x.id === id);
     if (i >= 0) st.els.splice(i, 1);
-    sy.last.delete(id);
+    sy.last.delete(id); sy.sent.delete(id);
   });
   if (BGS.some((b) => b[0] === m.bg)) st.bg = m.bg;
   st.sel = st.sel.filter((id) => byId(id));
@@ -1139,7 +1382,7 @@ function applyRemote(m) {
 function connect(send) {
   if (!st) return;
   if (st.sync) clearInterval(st.sync.timer);
-  const sy = st.sync = { send: send, last: new Map(), ready: false, role: null, cursors: {}, peers: 0, touched: false, curAt: 0, remote: new Set(), timer: 0 };
+  const sy = st.sync = { send: send, last: new Map(), sent: new Map(), ready: false, role: null, cursors: {}, peers: 0, touched: false, curAt: 0, remote: new Set(), timer: 0 };
   sy.timer = setInterval(syncTick, 120);
   liveStatus('connecting');
 }
@@ -1157,11 +1400,11 @@ function receive(m) {
     case 'hello': {
       sy.role = m.role === 'tutor' ? 'tutor' : 'student';
       const server = new Map();
-      (Array.isArray(m.els) ? m.els : []).forEach((e) => { const c = cleanEl(e); if (c) server.set(c.id, c); });
+      (Array.isArray(m.els) ? m.els : []).forEach((e) => { const c = cleanFull(e); if (c) server.set(c.id, c); });
       const hadLocal = st.els.length > 0;
       const localOnly = st.els.filter((e) => !server.has(e.id));
       st.els = Array.from(server.values()).concat(localOnly);
-      server.forEach((c, id) => sy.last.set(id, JSON.stringify(c)));
+      server.forEach((c, id) => { sy.last.set(id, sigOf(c)); if (c.k === 'image') sy.sent.set(id, srcRef(c.src)); });
       if (server.size || sy.role === 'student') { if (BGS.some((b) => b[0] === m.bg)) st.bg = m.bg; }
       else if (st.bg !== m.bg) sy.send({ t: 'ops', set: [], del: [], bg: st.bg });
       sy.ready = true; sy.touched = true;
@@ -1186,7 +1429,7 @@ function receive(m) {
       if (num(m.x) && num(m.y) && num(m.id)) { sy.cursors[m.id] = { x: m.x, y: m.y, role: m.role === 'tutor' ? 'tutor' : 'student', t: Date.now() }; schedDraw(); }
       break;
     case 'error': liveStatus(m.code === 'full' ? 'full' : 'denied'); break;
-    case 'deny': if (window.toast) window.toast('Сейчас рисовать нельзя'); break;
+    case 'deny': toast(m.why === 'img' ? 'Картинка не отправилась: на сервере нет места для картинок этой доски' : 'Сейчас рисовать нельзя'); break;
   }
 }
 function setShare(on, info) {
@@ -1198,5 +1441,5 @@ function setShare(on, info) {
   updateUi();
 }
 
-window.Board = { connect: connect, disconnect: disconnect, receive: receive, liveStatus: liveStatus, setShare: setShare, open: open, close: close, _s: () => st, _t: { hit: hit, bbox: bbox, moveEl: moveEl, resizeEl: resizeEl, sanitizeData: sanitizeData, wrap: wrap } };
+window.Board = { connect: connect, disconnect: disconnect, receive: receive, liveStatus: liveStatus, setShare: setShare, open: open, close: close, _s: () => st, _t: { hit: hit, bbox: bbox, moveEl: moveEl, resizeEl: resizeEl, sanitizeData: sanitizeData, wrap: wrap, insertImages: insertImages, encodeImage: encodeImage } };
 })();

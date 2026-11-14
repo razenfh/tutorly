@@ -19,7 +19,7 @@ A journal for private tutors: lesson schedule, payments, homework, reschedules w
 - **Student:** lessons, reschedules with reasons, homework (can mark "done"), requests to move a lesson, the lesson board and boards of past lessons.
 - **Parent:** the same view, read-only.
 - **Reschedule requests:** a student or parent asks to move a lesson; the teacher accepts with one tap or declines with a reply.
-- **Whiteboard:** infinite canvas with Miro-style hotkeys, saved per lesson, real-time collaboration, PNG export.
+- **Whiteboard:** infinite canvas with Miro-style hotkeys, saved per lesson, real-time collaboration, PNG export. Images can be added with the "Картинка" button (or `I`), pasted with Ctrl+V (e.g. a screenshot) or dropped onto the board; they are downscaled to 1600 px and compressed automatically.
 - **Sync:** teacher data is shared between desktop and phone through the server (last write wins).
 - **Works offline on one computer:** the desktop app can run without a server, with data in a single local file.
 

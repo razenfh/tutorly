@@ -88,6 +88,13 @@ ipcMain.on('data:saveSync', (e, text) => {
   try { writeData(String(text)); e.returnValue = true; } catch (err) { e.returnValue = false; }
 });
 ipcMain.handle('copy', (e, text) => { clipboard.writeText(String(text)); return true; });
+// Картинка из системного буфера (скриншот, «Копировать изображение»): data-URL в PNG или null, если там не картинка
+ipcMain.handle('clipboard:image', () => {
+  try {
+    const img = clipboard.readImage();
+    return img.isEmpty() ? null : img.toDataURL();
+  } catch (err) { return null; }
+});
 ipcMain.handle('dir:show', () => shell.openPath(app.getPath('userData')));
 
 ipcMain.handle('file:saveHtml', async (e, name, html) => {

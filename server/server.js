@@ -9,7 +9,11 @@ const { WebSocketServer } = require('ws');
 const { createJournal } = require('./journal');
 const { createAuth } = require('./auth');
 
-const KINDS = new Set(['pen', 'line', 'rect', 'ellipse', 'note', 'text']);
+const KINDS = new Set(['pen', 'line', 'rect', 'ellipse', 'note', 'text', 'image']);
+/* Картинка на доске: data-URL внутри объекта. Лимит на объект больше обычного, и есть общий лимит на комнату.
+   Клиент сжимает картинки до 450 000 символов; у WebSocket maxPayload 1 МБ, так что одно сообщение вмещает одну картинку. */
+const IMG_SRC_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+const MAX_IMG_EL_BYTES = 500000, MAX_ROOM_IMG = 20 * 1024 * 1024;
 const BGS = new Set(['dots', 'grid', 'plain', 'axes']);
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const ROOM_RE = /^[A-Za-z0-9_-]{16,64}$/;
@@ -81,7 +85,7 @@ function start(opts) {
 
   function makeRoom(j) {
     const els = new Map();
-    (Array.isArray(j.els) ? j.els : []).forEach((e) => { if (okEl(e)) els.set(e.id, e); });
+    (Array.isArray(j.els) ? j.els : []).forEach((e) => { if (okEl(e) && (e.k !== 'image' || e.src)) els.set(e.id, e); });
     return {
       id: j.id, owner: typeof j.owner === 'string' ? j.owner : '', tk: j.tk, sk: j.sk, write: j.write !== false, bg: BGS.has(j.bg) ? j.bg : 'dots',
       els: els, clients: new Set(), seq: 0, dirty: false, timer: null, evict: null, deleted: false,
@@ -114,8 +118,21 @@ function start(opts) {
   function okEl(e) {
     if (!e || typeof e !== 'object' || Array.isArray(e)) return false;
     if (typeof e.id !== 'string' || !ID_RE.test(e.id) || !KINDS.has(e.k)) return false;
-    try { return JSON.stringify(e).length <= MAX_EL_BYTES; } catch (err) { return false; }
+    let limit = MAX_EL_BYTES;
+    if (e.k === 'image') {
+      const n = (v) => typeof v === 'number' && isFinite(v);
+      if (![e.x, e.y, e.w, e.h].every(n) || e.w < 1 || e.h < 1 || e.w > 50000 || e.h > 50000) return false;
+      // src пустой или отсутствует: клиент передвинул картинку, а данные у сервера уже есть
+      if (e.src !== undefined && e.src !== '' && (typeof e.src !== 'string' || !IMG_SRC_RE.test(e.src))) return false;
+      limit = MAX_IMG_EL_BYTES;
+    }
+    try { return JSON.stringify(e).length <= limit; } catch (err) { return false; }
   }
+  const imgBytes = (room, exceptId) => {
+    let n = 0;
+    room.els.forEach((e, id) => { if (e.k === 'image' && id !== exceptId && typeof e.src === 'string') n += e.src.length; });
+    return n;
+  };
 
   /* ---------- HTTP ---------- */
   const STATUS = { invalid: 400, weak: 400, json: 400, auth: 401, forbidden: 403, invite: 403, none: 404, exists: 409, toobig: 413, rate: 429, full: 507 };
@@ -393,12 +410,21 @@ function start(opts) {
   function onOps(room, c, m) {
     if (c.role !== 'tutor' && !room.write) { sendTo(c, { t: 'deny' }); return; }
     const set = [], del = [];
-    let bg;
+    let bg, noRoom = false;
     (Array.isArray(m.set) ? m.set.slice(0, MAX_SET) : []).forEach((e) => {
       if (!okEl(e)) return;
-      if (!room.els.has(e.id) && room.els.size >= MAX_ELS) return;
-      room.els.set(e.id, e); set.push(e);
+      const old = room.els.get(e.id);
+      if (!old && room.els.size >= MAX_ELS) return;
+      let keep = e;
+      if (e.k === 'image') {
+        if (e.src) {
+          if (imgBytes(room, e.id) + e.src.length > MAX_ROOM_IMG) { noRoom = true; return; }
+        } else if (old && old.k === 'image' && old.src) keep = Object.assign({}, e, { src: old.src }); // пришло только положение
+        else return; // положение картинки, которой у нас нет
+      }
+      room.els.set(e.id, keep); set.push(e);
     });
+    if (noRoom) sendTo(c, { t: 'deny', why: 'img' });
     (Array.isArray(m.del) ? m.del.slice(0, MAX_DEL) : []).forEach((id) => {
       if (typeof id === 'string' && room.els.delete(id)) del.push(id);
     });
