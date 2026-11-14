@@ -13,7 +13,9 @@ window.api = {
   boardLoad: function () { return Promise.resolve({ data: null }); },
   boardSave: function () { return Promise.resolve(true); },
   boardSaveSync: function () { return true; },
-  copy: function () { return Promise.resolve(true); },
+  copy: function (t) { // доска очищает буфер при Ctrl+C, чтобы старый скриншот не перебивал вставку объектов
+    try { return navigator.clipboard.writeText(String(t)); } catch (e) { return Promise.resolve(false); }
+  },
   savePng: function (name, url) {
     const a = document.createElement('a');
     a.href = url; a.download = name;
