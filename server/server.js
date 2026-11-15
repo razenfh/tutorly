@@ -407,31 +407,69 @@ function start(opts) {
   };
   const peersMsg = (room) => ({ t: 'peers', list: Array.from(room.clients).map((c) => ({ id: c.id, role: c.role })) });
 
-  function onOps(room, c, m) {
-    if (c.role !== 'tutor' && !room.write) { sendTo(c, { t: 'deny' }); return; }
+  /* Что отправителю надо поправить у себя: сервер что-то не принял, и у клиента осталось то, чего на сервере нет
+     (или осталась старая версия). Картинки идут без данных: сам рисунок у клиента уже есть. */
+  function fixOf(room, ids, withBg) {
     const set = [], del = [];
-    let bg, noRoom = false;
-    (Array.isArray(m.set) ? m.set.slice(0, MAX_SET) : []).forEach((e) => {
-      if (!okEl(e)) return;
-      const old = room.els.get(e.id);
-      if (!old && room.els.size >= MAX_ELS) return;
-      let keep = e;
-      if (e.k === 'image') {
-        if (e.src) {
-          if (imgBytes(room, e.id) + e.src.length > MAX_ROOM_IMG) { noRoom = true; return; }
-        } else if (old && old.k === 'image' && old.src) keep = Object.assign({}, e, { src: old.src }); // пришло только положение
-        else return; // положение картинки, которой у нас нет
+    ids.forEach((id) => {
+      const e = room.els.get(id);
+      if (!e) del.push(id); else set.push(e.k === 'image' ? Object.assign({}, e, { src: '' }) : e);
+    });
+    const f = { set: set, del: del };
+    if (withBg) f.bg = room.bg;
+    return f;
+  }
+  /* Клиент нумерует каждое ops-сообщение (n) и пока не получит ack, считает свои объекты «в пути» и не даёт чужим правкам их затирать.
+     Поэтому ack уходит на любое сообщение с номером: и принятое, и отклонённое, и упавшее с ошибкой. */
+  function onOps(room, c, m) {
+    const rejected = new Set();
+    const rej = (id) => { if (typeof id === 'string' && ID_RE.test(id) && rejected.size < 2000) rejected.add(id); };
+    let fix = null, denied = false;
+    try {
+      if (c.role !== 'tutor' && !room.write) {
+        denied = true;
+        sendTo(c, { t: 'deny' });
+        (Array.isArray(m.set) ? m.set : []).forEach((e) => rej(e && e.id));
+        (Array.isArray(m.del) ? m.del : []).forEach(rej);
+      } else {
+        const set = [], del = [];
+        let bg, noRoom = false;
+        const sets = Array.isArray(m.set) ? m.set : [], dels = Array.isArray(m.del) ? m.del : [];
+        sets.forEach((e, i) => {
+          if (i >= MAX_SET) { rej(e && e.id); return; }
+          if (!okEl(e)) { rej(e && e.id); return; }
+          const old = room.els.get(e.id);
+          if (!old && room.els.size >= MAX_ELS) { rej(e.id); return; }
+          let keep = e;
+          if (e.k === 'image') {
+            if (e.src) {
+              if (imgBytes(room, e.id) + e.src.length > MAX_ROOM_IMG) { noRoom = true; rej(e.id); return; }
+            } else if (old && old.k === 'image' && old.src) keep = Object.assign({}, e, { src: old.src }); // пришло только положение
+            else { rej(e.id); return; } // положение картинки, которой у нас нет
+          }
+          room.els.set(e.id, keep); set.push(e);
+        });
+        if (noRoom) sendTo(c, { t: 'deny', why: 'img' });
+        dels.forEach((id, i) => {
+          if (i >= MAX_DEL) { rej(id); return; }
+          if (typeof id === 'string' && room.els.delete(id)) del.push(id);
+        });
+        if (typeof m.bg === 'string' && BGS.has(m.bg) && m.bg !== room.bg) { room.bg = m.bg; bg = m.bg; }
+        if (set.length || del.length || bg) {
+          persist(room);
+          broadcast(room, { t: 'ops', set: set, del: del, bg: bg }, c);
+        }
       }
-      room.els.set(e.id, keep); set.push(e);
-    });
-    if (noRoom) sendTo(c, { t: 'deny', why: 'img' });
-    (Array.isArray(m.del) ? m.del.slice(0, MAX_DEL) : []).forEach((id) => {
-      if (typeof id === 'string' && room.els.delete(id)) del.push(id);
-    });
-    if (typeof m.bg === 'string' && BGS.has(m.bg) && m.bg !== room.bg) { room.bg = m.bg; bg = m.bg; }
-    if (!set.length && !del.length && !bg) return;
-    persist(room);
-    broadcast(room, { t: 'ops', set: set, del: del, bg: bg }, c);
+      if (rejected.size || denied) fix = fixOf(room, Array.from(rejected), denied);
+    } catch (e) {
+      console.error('ops', e.message);
+      const ids = [];
+      (Array.isArray(m.set) ? m.set : []).forEach((x) => { if (x && typeof x.id === 'string') ids.push(x.id); });
+      (Array.isArray(m.del) ? m.del : []).forEach((id) => { if (typeof id === 'string') ids.push(id); });
+      fix = fixOf(room, ids.slice(0, 2000), true);
+    } finally {
+      if (typeof m.n === 'number') sendTo(c, fix ? { t: 'ack', n: m.n, fix: fix } : { t: 'ack', n: m.n });
+    }
   }
   function onMessage(room, c, m) {
     switch (m.t) {
@@ -474,7 +512,7 @@ function start(opts) {
         room.evict.unref();
       }
     });
-    sendTo(c, { t: 'hello', role: role, id: c.id, write: room.write, bg: room.bg, els: Array.from(room.els.values()) });
+    sendTo(c, { t: 'hello', role: role, id: c.id, ack: 1, room: room.id, write: room.write, bg: room.bg, els: Array.from(room.els.values()) });
     broadcast(room, peersMsg(room));
   }
   server.on('upgrade', (req, socket, head) => {

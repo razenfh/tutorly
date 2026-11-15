@@ -11,8 +11,25 @@
   "build": {
     "appId": "app.tutor.journal",
     "productName": "Журнал репетитора",
-    "files": ["main.js", "preload.js", "renderer/**"],
-    "linux": { "target": ["AppImage"], "category": "Education" },
-    "win": { "target": ["nsis"] }
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Education"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
   }
 }

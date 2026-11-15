@@ -210,6 +210,9 @@ function sanitizeData(d) {
   }
   if (BGS.some((b) => b[0] === d.bg)) out.bg = d.bg;
   if (d.view && num(d.view.x) && num(d.view.y) && num(d.view.z)) out.view = { x: d.view.x, y: d.view.y, z: Math.max(ZMIN, Math.min(ZMAX, d.view.z)) };
+  if (d.conf && typeof d.conf.r === 'string' && Array.isArray(d.conf.ids)) { // что сервер уже подтверждал (см. hello), чтобы после перезапуска не вернуть удалённое другими
+    out.conf = { r: d.conf.r.slice(0, 80), ids: d.conf.ids.filter((id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id)).slice(0, MAX_ELS + 100) };
+  }
   if (Array.isArray(d.els)) {
     const seen = {};
     d.els.forEach((e) => {
@@ -531,7 +534,7 @@ function restore(text) {
 function undo() { commitEdit(); const h = st.hist; if (!h.u.length) return; h.r.push(snap()); restore(h.u.pop()); changed(); }
 function redo() { commitEdit(); const h = st.hist; if (!h.r.length) return; h.u.push(snap()); restore(h.r.pop()); changed(); }
 const hasContent = () => st.els.length > 0;
-const serialize = () => JSON.stringify({ v: 2, bg: st.bg, view: { x: rnd(st.view.x), y: rnd(st.view.y), z: Math.round(st.view.z * 1000) / 1000 }, els: st.els });
+const serialize = () => JSON.stringify({ v: 2, bg: st.bg, view: { x: rnd(st.view.x), y: rnd(st.view.y), z: Math.round(st.view.z * 1000) / 1000 }, conf: st.confRoom ? { r: st.confRoom, ids: Array.from(st.conf).slice(0, MAX_ELS + 100) } : undefined, els: st.els });
 
 function setStatus(t) { const e = $('boardSaved'); if (e) e.textContent = t; }
 function scheduleSave() {
@@ -801,14 +804,20 @@ function newText(p) {
 }
 
 /* ---------- создание объектов ---------- */
+const SNAP_DEG = 5;
+function snapAngle(ax, ay, bx, by, force) {
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+  if (len < 1e-6) return [bx, by];
+  const step = Math.PI / 4, angle = Math.atan2(dy, dx);
+  const nearest = Math.round(angle / step) * step;
+  if (!force && Math.abs(angle - nearest) > SNAP_DEG * Math.PI / 180 + 1e-12) return [bx, by];
+  return [ax + len * Math.cos(nearest), ay + len * Math.sin(nearest)];
+}
+
 function mk(kind, a, b, shift) {
   const c = st.color, sw = st.width;
   if (kind === 'line' || kind === 'arrow') {
-    let q = b;
-    if (shift) {
-      const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
-      q = [a[0] + len * Math.cos(ang), a[1] + len * Math.sin(ang)];
-    }
+    const q = snapAngle(a[0], a[1], b[0], b[1], shift);
     return { id: nid(), k: 'line', c: c, sw: sw, a: [rnd(a[0]), rnd(a[1])], b: [rnd(q[0]), rnd(q[1])], ar: kind === 'arrow' };
   }
   let w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
@@ -853,12 +862,16 @@ function eraseAt(p, d) {
     changed();
   }
 }
+const svgCur = (svg, x, y, fb) => 'url("data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '") ' + x + ' ' + y + ', ' + fb;
+const CUR_CROSS = svgCur('<svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25"><path d="M12.5 2v21M2 12.5h21" stroke="#fff" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M12.5 2v21M2 12.5h21" stroke="#111" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>', 12, 12, 'crosshair');
+const CUR_ARROW = svgCur('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="26" viewBox="0 0 20 26"><path d="M2 2v18l5-4.5 3.4 7.6 3-1.4-3.3-7.4H17z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>', 2, 2, 'default');
+const CUR_TEXT = svgCur('<svg xmlns="http://www.w3.org/2000/svg" width="17" height="25" viewBox="0 0 17 25"><path d="M4 3h9M4 22h9M8.5 3v19" stroke="#fff" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M4 3h9M4 22h9M8.5 3v19" stroke="#111" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>', 8, 12, 'text');
 function cursorFor() {
   if (st.space || st.tool === 'hand') return st.drag && st.drag.t === 'pan' ? 'grabbing' : 'grab';
-  if (st.tool === 'text') return 'text';
+  if (st.tool === 'text') return CUR_TEXT;
   if (st.tool === 'eraser') return 'cell';
-  if (st.tool === 'select') return 'default';
-  return 'crosshair';
+  if (st.tool === 'select') return CUR_ARROW;
+  return CUR_CROSS;
 }
 function onDown(e) {
   if (!st) return;
@@ -924,7 +937,7 @@ function onMove(e) {
     if (st.tool === 'select' && !st.space) {
       const hn = handleAt(s);
       const cv = $('boardCanvas');
-      cv.style.cursor = hn ? (hn === 'nw' || hn === 'se' ? 'nwse-resize' : hn === 'ne' || hn === 'sw' ? 'nesw-resize' : 'crosshair') : (topHit(p) ? 'move' : 'default');
+      cv.style.cursor = hn ? (hn === 'nw' || hn === 'se' ? 'nwse-resize' : hn === 'ne' || hn === 'sw' ? 'nesw-resize' : 'crosshair') : (topHit(p) ? 'move' : CUR_ARROW);
     }
     return;
   }
@@ -935,6 +948,13 @@ function onMove(e) {
       zoomLabel(); st.dirty = true; clearTimeout(st.timer); st.timer = setTimeout(flush, 600);
       break;
     case 'pen': {
+      if (e.shiftKey) {
+        if (!d.base) d.base = d.el.p.slice();
+        const q = snapAngle(d.base[d.base.length - 2], d.base[d.base.length - 1], p[0], p[1], false);
+        d.el.p = d.base.concat([rnd(q[0]), rnd(q[1])]);
+        break;
+      }
+      d.base = null;
       const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
       (evs.length ? evs : [e]).forEach((ev) => {
         const q = wld(scr(ev)), pts = d.el.p;
@@ -1215,6 +1235,7 @@ async function open(opts) {
     els: [], sel: [], bg: 'dots', view: { x: -400, y: -250, z: 1 }, tool: 'select', color: INK[0][0], fill: null, width: 4,
     hist: { u: [], r: [] }, drag: null, edit: null, space: false, dirty: false, timer: 0, w: 0, h: 0, dpr: 1, pasteN: 0,
     focus: document.activeElement, sync: null, readonly: false, canWrite: true, onShare: opts.onShare || null, shareLink: '', sharing: false, liveState: '',
+    conf: new Set(), confRoom: '',
   };
   $('boardTitle').textContent = s.title;
   $('boardTools').innerHTML = toolbarHtml();
@@ -1237,6 +1258,7 @@ async function open(opts) {
   if (st !== s) return;
   if (loaded) {
     s.els = loaded.els; s.bg = loaded.bg;
+    if (loaded.conf) { s.conf = new Set(loaded.conf.ids); s.confRoom = loaded.conf.r; }
     if (loaded.view) s.view = loaded.view;
     else { fit(); }
   }
@@ -1316,7 +1338,7 @@ function setWrite(w) {
   setReadonly(!!(st.sync && st.sync.role !== 'tutor' && !w));
   updateUi();
 }
-function sendBg() { const sy = st && st.sync; if (sy && sy.ready && !st.readonly) sy.send({ t: 'ops', set: [], del: [], bg: st.bg }); }
+function sendBg() { const sy = st && st.sync; if (sy && sy.ready && !st.readonly) sendOps(sy, [], [], st.bg); }
 function syncTick() {
   const sy = st && st.sync;
   if (!sy || !sy.ready) return;
@@ -1341,8 +1363,21 @@ function syncTick() {
     const w = wireEl(sy, el);
     if (w.k === 'image' && w.src) sy.send({ t: 'ops', set: [w], del: [] }); else light.push(w);
   });
-  for (let i = 0; i < light.length; i += 200) sy.send({ t: 'ops', set: light.slice(i, i + 200), del: [] });
-  for (let i = 0; i < del.length; i += 1000) sy.send({ t: 'ops', set: [], del: del.slice(i, i + 1000) });
+  for (let i = 0; i < light.length; i += 200) sendOps(sy, light.slice(i, i + 200), []);
+  for (let i = 0; i < del.length; i += 1000) sendOps(sy, [], del.slice(i, i + 1000));
+}
+/* Каждое ops-сообщение нумеруется, а его объекты считаются «в пути» до ack от сервера: пока так, чужие правки этих же объектов
+   не применяются. Иначе при одновременной правке сервер оставит одну версию, а у нас с ним окажутся разные (порядок, в котором
+   правки дошли до сервера, мы не знаем). Если сервер что-то не принял, в ack приходит fix с тем, что реально лежит на сервере. */
+function sendOps(sy, set, del, bg) {
+  const n = ++sy.seq;
+  if (sy.ack) {
+    set.forEach((e) => sy.pend.set(e.id, { n: n, del: false }));
+    del.forEach((id) => sy.pend.set(id, { n: n, del: true }));
+  }
+  const m = { t: 'ops', n: n, set: set, del: del };
+  if (bg) m.bg = bg;
+  sy.send(m);
 }
 /* подпись объекта для сравнения «изменился ли»; у картинки вместо мегабайт src — его номер */
 function sigOf(el) { return JSON.stringify(el.k === 'image' ? Object.assign({}, el, { src: srcRef(el.src) }) : el); }
@@ -1354,11 +1389,13 @@ function wireEl(sy, el) {
   sy.sent.set(el.id, r);
   return el;
 }
-function applyRemote(m) {
+/* mine: это fix из ack, то есть поправка к нашим же объектам, а не чужая работа (иначе отмена перестала бы их трогать) */
+function applyRemote(m, mine) {
   const sy = st.sync;
+  const busy = (id) => sy.ack && sy.pend.has(id); // свою правку этого объекта сервер ещё не подтвердил: она новее, чужая не применяется
   (Array.isArray(m.set) ? m.set : []).forEach((e) => {
     const c = cleanEl(e);
-    if (!c) return;
+    if (!c || busy(c.id)) return;
     const i = st.els.findIndex((x) => x.id === c.id);
     if (c.k === 'image') {
       if (!c.src) { if (i < 0 || st.els[i].k !== 'image') return; c.src = st.els[i].src; } // пришло только положение, данные уже у нас
@@ -1366,13 +1403,15 @@ function applyRemote(m) {
     }
     if (i >= 0) st.els[i] = c; else st.els.push(c);
     sy.last.set(c.id, sigOf(c));
-    sy.remote.add(c.id);
+    if (!mine) sy.remote.add(c.id);
+    st.conf.add(c.id);
   });
   (Array.isArray(m.del) ? m.del : []).forEach((id) => {
-    if (typeof id !== 'string') return;
+    if (typeof id !== 'string' || busy(id)) return;
     const i = st.els.findIndex((x) => x.id === id);
     if (i >= 0) st.els.splice(i, 1);
     sy.last.delete(id); sy.sent.delete(id);
+    st.conf.delete(id);
   });
   if (BGS.some((b) => b[0] === m.bg)) st.bg = m.bg;
   st.sel = st.sel.filter((id) => byId(id));
@@ -1382,7 +1421,7 @@ function applyRemote(m) {
 function connect(send) {
   if (!st) return;
   if (st.sync) clearInterval(st.sync.timer);
-  const sy = st.sync = { send: send, last: new Map(), sent: new Map(), ready: false, role: null, cursors: {}, peers: 0, touched: false, curAt: 0, remote: new Set(), timer: 0 };
+  const sy = st.sync = { send: send, last: new Map(), sent: new Map(), ready: false, role: null, cursors: {}, peers: 0, touched: false, curAt: 0, remote: new Set(), timer: 0, seq: 0, pend: new Map(), ack: false };
   sy.timer = setInterval(syncTick, 120);
   liveStatus('connecting');
 }
@@ -1399,11 +1438,23 @@ function receive(m) {
   switch (m.t) {
     case 'hello': {
       sy.role = m.role === 'tutor' ? 'tutor' : 'student';
+      sy.ack = m.ack === 1; // старый сервер не присылает ack: тогда «в пути» не отслеживаем, иначе чужие правки не применялись бы никогда
+      const rid = sy.ack && typeof m.room === 'string' ? m.room : '';
+      if (st.confRoom !== rid) { st.conf = new Set(); st.confRoom = rid; } // подтверждённые объекты другой комнаты тут ни при чём
       const server = new Map();
       (Array.isArray(m.els) ? m.els : []).forEach((e) => { const c = cleanFull(e); if (c) server.set(c.id, c); });
       const hadLocal = st.els.length > 0;
-      const localOnly = st.els.filter((e) => !server.has(e.id));
-      st.els = Array.from(server.values()).concat(localOnly);
+      /* Чего нет на сервере: если мы это раньше видели там, значит, пока нас не было, объект удалили, и возвращать его нельзя.
+         Остальное нарисовано без связи и ещё не отправлено. Наоборот: объект есть на сервере, был там раньше и пропал у нас, значит,
+         его удалили мы сами без связи: не возвращаем, а удаляем и на сервере (для этого он остаётся в sy.last, тик увидит пропажу). */
+      const localIds = new Set(st.els.map((e) => e.id));
+      const localOnly = st.els.filter((e) => !server.has(e.id) && !(rid && st.conf.has(e.id)));
+      if (rid) {
+        const mine = Array.from(server.keys()).filter((id) => !localIds.has(id) && st.conf.has(id));
+        mine.forEach((id) => { sy.last.set(id, sigOf(server.get(id))); server.delete(id); });
+        st.conf = new Set(Array.from(server.keys()).concat(mine)); // ушедшие по чужому удалению тут же забываем
+      }
+      st.els =Array.from(server.values()).concat(localOnly);
       server.forEach((c, id) => { sy.last.set(id, sigOf(c)); if (c.k === 'image') sy.sent.set(id, srcRef(c.src)); });
       if (server.size || sy.role === 'student') { if (BGS.some((b) => b[0] === m.bg)) st.bg = m.bg; }
       else if (st.bg !== m.bg) sy.send({ t: 'ops', set: [], del: [], bg: st.bg });
@@ -1416,6 +1467,18 @@ function receive(m) {
       break;
     }
     case 'ops': applyRemote(m); break;
+    case 'ack': {
+      if (typeof m.n !== 'number') break;
+      let changed = false;
+      sy.pend.forEach((p, id) => { // сервер всё это обработал: принятое теперь подтверждено, отклонённое придёт в fix
+        if (p.n > m.n) return;
+        sy.pend.delete(id);
+        if (p.del) { if (st.conf.delete(id)) changed = true; } else if (!st.conf.has(id)) { st.conf.add(id); changed = true; }
+      });
+      if (m.fix && typeof m.fix === 'object') { applyRemote(m.fix, true); changed = false; }
+      if (changed) scheduleSave();
+      break;
+    }
     case 'perm': setWrite(m.write !== false); break;
     case 'peers': {
       const list = Array.isArray(m.list) ? m.list : [];
@@ -1429,7 +1492,7 @@ function receive(m) {
       if (num(m.x) && num(m.y) && num(m.id)) { sy.cursors[m.id] = { x: m.x, y: m.y, role: m.role === 'tutor' ? 'tutor' : 'student', t: Date.now() }; schedDraw(); }
       break;
     case 'error': liveStatus(m.code === 'full' ? 'full' : 'denied'); break;
-    case 'deny': toast(m.why === 'img' ? 'Картинка не отправилась: на сервере нет места для картинок этой доски' : 'Сейчас рисовать нельзя'); break;
+    case 'deny': toast(m.why === 'img' ? 'Картинка не поместилась: на сервере нет места для картинок этой доски, она убрана' : 'Сейчас рисовать нельзя'); break;
   }
 }
 function setShare(on, info) {
