@@ -1,0 +1,45 @@
+# Maintainer: razenfh
+#
+# Собирает пакет из последнего коммита ветки main. Приложение запускается на системном
+# Electron из репозиториев Arch, поэтому npm и скачивание бинарников не нужны.
+#
+# Установить локально:  cd packaging/arch && makepkg -si
+# Для AUR перед отправкой выполните:  makepkg --printsrcinfo > .SRCINFO
+
+pkgname=zhurnal-repetitora-git
+_pkgname=tutorly
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Расписание уроков, оплата, переносы и домашние задания для репетитора'
+arch=('any')
+url='https://github.com/razenfh/tutorly'
+# TODO: в репозитории нет файла LICENSE. Выберите лицензию, добавьте файл и укажите её здесь
+# (например 'MIT'), иначе пакет в AUR будет без внятной лицензии.
+license=('custom')
+depends=('electron')
+makedepends=('git')
+provides=('zhurnal-repetitora')
+conflicts=('zhurnal-repetitora')
+source=("$_pkgname::git+$url.git#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/$_pkgname"
+  local v
+  v=$(grep -m1 '"version"' package.json | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+  printf '%s.r%s.g%s' "$v" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+package() {
+  cd "$srcdir/$_pkgname"
+  local appdir=/usr/lib/zhurnal-repetitora
+
+  install -d "$pkgdir$appdir"
+  cp -r main.js preload.js package.json renderer "$pkgdir$appdir/"
+  find "$pkgdir$appdir" -type d -exec chmod 755 {} +
+  find "$pkgdir$appdir" -type f -exec chmod 644 {} +
+
+  install -Dm755 packaging/linux/zhurnal-repetitora "$pkgdir/usr/bin/zhurnal-repetitora"
+  install -Dm644 packaging/linux/zhurnal-repetitora.desktop "$pkgdir/usr/share/applications/zhurnal-repetitora.desktop"
+  install -Dm644 packaging/linux/zhurnal-repetitora.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/zhurnal-repetitora.svg"
+}

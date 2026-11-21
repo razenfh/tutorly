@@ -61,6 +61,17 @@ npm start
 
 Если Electron ругается на `chrome-sandbox`, запустите так: `npx electron . --no-sandbox`.
 
+### Установка пакетом (программа появится в меню приложений)
+
+В папке `packaging/arch` лежит `PKGBUILD`. Он ставит программу на системный Electron, поэтому `npm` не нужен:
+
+```
+cd packaging/arch
+makepkg -si
+```
+
+После установки найдите «Журнал репетитора» в меню приложений или запустите командой `zhurnal-repetitora`. Данные остаются в `~/.config/zhurnal-repetitora`. Свои флаги Electron можно записать в `~/.config/zhurnal-repetitora-flags.conf`, по одному в строке.
+
 ## Запуск на Windows
 
 Установите Node.js с nodejs.org, затем в папке проекта в терминале:
