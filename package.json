@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Расписание уроков, оплата, переносы с причинами и домашние задания для репетитора",
   "main": "main.js",
+  "desktopName": "zhurnal-repetitora.desktop",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"

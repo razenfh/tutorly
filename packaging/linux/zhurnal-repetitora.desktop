@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Журнал репетитора
+Name[en]=Tutor Journal
+Comment=Расписание уроков, оплата и домашние задания
+Comment[en]=Lesson schedule, payments and homework for tutors
+Exec=zhurnal-repetitora
+Icon=zhurnal-repetitora
+Terminal=false
+Categories=Education;
+Keywords=репетитор;уроки;расписание;журнал;tutor;lessons;
+StartupNotify=true
