@@ -167,7 +167,7 @@ function render() {
   const a = B().getAcct();
   let h = '';
   if (P.view === 'welcome') {
-    h = '<div class="p-wrap p-narrow"><div class="p-bar"><span class="p-spacer"></span>' + themeBtn() + '</div><h1 class="p-title">Журнал репетитора</h1><p class="p-sub">' + (P.msg ? esc(P.msg) : 'Кто вы? Выберите, как вы будете пользоваться программой.') + '</p>'
+    h = '<div class="p-wrap p-narrow"><div class="p-bar"><span class="p-spacer"></span>' + themeBtn() + '</div><h1 class="p-title">Tutorly</h1><p class="p-sub">' + (P.msg ? esc(P.msg) : 'Кто вы? Выберите, как вы будете пользоваться программой.') + '</p>'
       + '<div class="p-roles"><button class="p-role" data-p="role" data-role="student"><b>Я ученик</b><span>Смотрю свои уроки, домашку и рисую на доске вместе с учителем</span></button>'
       + '<button class="p-role" data-p="role" data-role="parent"><b>Я родитель</b><span>Слежу за занятиями ребёнка: расписание, переносы, домашка</span></button>'
       + '<button class="p-role" data-p="role" data-role="teacher"><b>Я учитель</b><span>Веду курсы, расписание, оплаты, домашку и доску</span></button></div>'

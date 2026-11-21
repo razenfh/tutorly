@@ -1,5 +1,5 @@
 [Unit]
-Description=Сервер совместной доски (журнал репетитора)
+Description=Сервер совместной доски (Tutorly)
 After=network.target
 
 [Service]

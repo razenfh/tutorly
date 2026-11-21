@@ -2,7 +2,7 @@
   "name": "zhurnal-board-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Сервер совместной доски для журнала репетитора",
+  "description": "Сервер совместной доски для Tutorly",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

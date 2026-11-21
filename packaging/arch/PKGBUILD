@@ -6,7 +6,7 @@
 # Установить локально:  cd packaging/arch && makepkg -si
 # Для AUR перед отправкой выполните:  makepkg --printsrcinfo > .SRCINFO
 
-pkgname=zhurnal-repetitora-git
+pkgname=tutorly-git
 _pkgname=tutorly
 pkgver=0.1.0
 pkgrel=1
@@ -18,8 +18,8 @@ url='https://github.com/razenfh/tutorly'
 license=('custom')
 depends=('electron')
 makedepends=('git')
-provides=('zhurnal-repetitora')
-conflicts=('zhurnal-repetitora')
+provides=('tutorly')
+conflicts=('tutorly')
 source=("$_pkgname::git+$url.git#branch=main")
 sha256sums=('SKIP')
 
@@ -32,14 +32,14 @@ pkgver() {
 
 package() {
   cd "$srcdir/$_pkgname"
-  local appdir=/usr/lib/zhurnal-repetitora
+  local appdir=/usr/lib/tutorly
 
   install -d "$pkgdir$appdir"
   cp -r main.js preload.js package.json renderer "$pkgdir$appdir/"
   find "$pkgdir$appdir" -type d -exec chmod 755 {} +
   find "$pkgdir$appdir" -type f -exec chmod 644 {} +
 
-  install -Dm755 packaging/linux/zhurnal-repetitora "$pkgdir/usr/bin/zhurnal-repetitora"
-  install -Dm644 packaging/linux/zhurnal-repetitora.desktop "$pkgdir/usr/share/applications/zhurnal-repetitora.desktop"
-  install -Dm644 packaging/linux/zhurnal-repetitora.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/zhurnal-repetitora.svg"
+  install -Dm755 packaging/linux/tutorly "$pkgdir/usr/bin/tutorly"
+  install -Dm644 packaging/linux/tutorly.desktop "$pkgdir/usr/share/applications/tutorly.desktop"
+  install -Dm644 packaging/linux/tutorly.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/tutorly.svg"
 }
