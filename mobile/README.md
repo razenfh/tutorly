@@ -11,12 +11,12 @@
 Нужен Node.js. Версии пакетов Expo часто меняются, поэтому проект создаётся свежим, а наши файлы кладутся поверх.
 
 ```
-npx create-expo-app@latest zhurnal-mobile --template blank
-cd zhurnal-mobile
+npx create-expo-app@latest tutorly-mobile --template blank
+cd tutorly-mobile
 npx expo install react-native-webview expo-secure-store expo-crypto
 ```
 
-Затем скопируйте из этой папки в `zhurnal-mobile` с заменой: `App.js`, папку `src`, `app.json`. Запуск:
+Затем скопируйте из этой папки в `tutorly-mobile` с заменой: `App.js`, папку `src`, `app.json`. Запуск:
 
 ```
 npx expo start
@@ -30,7 +30,7 @@ npx expo start
 
 - iPhone: нужен аккаунт Apple Developer (99 долларов в год), сборка через `npx eas-cli build -p ios` и раздача через TestFlight или App Store.
 - Android: `npx eas-cli build -p android` даёт файл .apk, его можно отправить напрямую, либо Google Play.
-- Перед сборкой замените `com.example.zhurnal` в `app.json` на свой идентификатор.
+- Перед сборкой замените `com.example.tutorly` в `app.json` на свой идентификатор.
 
 ## Что проверено, а что нет
 

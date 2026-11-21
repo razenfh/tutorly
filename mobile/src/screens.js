@@ -12,7 +12,7 @@ export function Welcome({ onRole }) {
   );
   return (
     <Screen>
-      <H1>Журнал репетитора</H1>
+      <H1>Tutorly</H1>
       <T muted>Кто вы? Выберите, как вы будете пользоваться приложением.</T>
       <Role id="student" title="Я ученик" text="Мои уроки, домашка и доска на занятии" />
       <Role id="parent" title="Я родитель" text="Расписание, переносы и домашка ребёнка" />

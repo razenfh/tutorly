@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Tutorly</title>
+  <rect width="256" height="256" rx="56" fill="#111111"/>
+  <!-- толщина книги -->
+  <path d="M56 188c25-4 53 0 72 14 19-14 47-18 72-14" fill="none" stroke="#FAFAFA" stroke-opacity=".45" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- страницы -->
+  <path d="M123 88C104 73 79 68 56 72v108c24-4 49 0 67 13z" fill="#FAFAFA"/>
+  <path d="M133 88c19-15 44-20 67-16v108c-24-4-49 0-67 13z" fill="#FAFAFA"/>
+  <!-- строки текста -->
+  <g fill="none" stroke="#111111" stroke-width="6" stroke-linecap="round" stroke-opacity=".85">
+    <path d="M72 100c14-2 28 0 40 6"/>
+    <path d="M72 122c14-2 28 0 40 6"/>
+    <path d="M72 144c14-2 28 0 40 6"/>
+    <path d="M72 166c14-2 28 0 40 6"/>
+    <path d="M184 144c-14-2-28 0-40 6"/>
+    <path d="M184 166c-14-2-28 0-40 6"/>
+  </g>
+  <!-- закладка: верхняя часть над страницей сливается с фоном -->
+  <path d="M150 56v70l11-9 11 9V56z" fill="#111111"/>
+</svg>

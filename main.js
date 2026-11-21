@@ -1,9 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Папка с данными: ~/.config/zhurnal-repetitora (Linux), %APPDATA%\zhurnal-repetitora (Windows)
-app.setPath('userData', path.join(app.getPath('appData'), 'zhurnal-repetitora'));
+// Папка с данными: ~/.config/tutorly (Linux), %APPDATA%\tutorly (Windows).
+// Раньше программа называлась иначе и хранила данные в папке zhurnal-repetitora: при первом
+// запуске её содержимое переносится сюда. Если перенести не вышло, остаёмся на старой папке.
+const dataDirNew = path.join(app.getPath('appData'), 'tutorly');
+const dataDirOld = path.join(app.getPath('appData'), 'zhurnal-repetitora');
+try { if (!fs.existsSync(dataDirNew) && fs.existsSync(dataDirOld)) fs.renameSync(dataDirOld, dataDirNew); } catch (e) { /* остаёмся на старой папке */ }
+app.setPath('userData', !fs.existsSync(dataDirNew) && fs.existsSync(dataDirOld) ? dataDirOld : dataDirNew);
 const dataFile = () => path.join(app.getPath('userData'), 'journal.json');
 let win = null;
 
@@ -115,7 +120,7 @@ ipcMain.handle('backup:export', async (e, text) => {
     text = JSON.stringify(obj);
   } catch (err) { /* оставляем как есть */ }
   const r = await dialog.showSaveDialog(win, {
-    defaultPath: path.join(app.getPath('documents'), `zhurnal-kopiya-${day}.json`),
+    defaultPath: path.join(app.getPath('documents'), `tutorly-backup-${day}.json`),
     filters: [{ name: 'Копия данных', extensions: ['json'] }],
   });
   if (r.canceled || !r.filePath) return { ok: false };
@@ -131,7 +136,7 @@ ipcMain.handle('backup:import', async () => {
   if (r.canceled || !r.filePaths.length) return { ok: false };
   try {
     const data = readJson(r.filePaths[0]);
-    if (!data || typeof data !== 'object' || (!data.students && !data.lessons)) return { error: 'Это не копия данных журнала.' };
+    if (!data || typeof data !== 'object' || (!data.students && !data.lessons)) return { error: 'Это не копия данных Tutorly.' };
     if (data.boards && typeof data.boards === 'object') {
       Object.keys(data.boards).forEach((id) => {
         if (okId(id)) { try { writeAtomic(boardFile(id), JSON.stringify(data.boards[id])); } catch (e2) { /* ignore */ } }
@@ -147,8 +152,9 @@ ipcMain.handle('backup:import', async () => {
 function createWindow() {
   win = new BrowserWindow({
     width: 1100, height: 820, minWidth: 360, minHeight: 520,
-    title: 'Журнал репетитора',
-    backgroundColor: '#EEF2F8',
+    title: 'Tutorly',
+    icon: path.join(__dirname, 'renderer', 'icon.png'),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0B0B0B' : '#FAFAFA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

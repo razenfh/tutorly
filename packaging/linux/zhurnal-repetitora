@@ -1,9 +1,0 @@
-#!/bin/sh
-# Запуск «Журнала репетитора» на системном Electron.
-# Свои флаги Electron можно положить в ~/.config/zhurnal-repetitora-flags.conf (по одному в строке).
-flags_file="${XDG_CONFIG_HOME:-$HOME/.config}/zhurnal-repetitora-flags.conf"
-if [ -r "$flags_file" ]; then
-  # shellcheck disable=SC2046
-  set -- $(grep -v '^[[:space:]]*#' "$flags_file" | tr '\n' ' ') "$@"
-fi
-exec electron /usr/lib/zhurnal-repetitora --ozone-platform-hint=auto "$@"

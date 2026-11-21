@@ -1,17 +1,17 @@
 {
-  "name": "zhurnal-repetitora",
-  "productName": "Журнал репетитора",
+  "name": "tutorly",
+  "productName": "Tutorly",
   "version": "0.1.0",
   "description": "Расписание уроков, оплата, переносы с причинами и домашние задания для репетитора",
   "main": "main.js",
-  "desktopName": "zhurnal-repetitora.desktop",
+  "desktopName": "tutorly.desktop",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"
   },
   "build": {
     "appId": "app.tutor.journal",
-    "productName": "Журнал репетитора",
+    "productName": "Tutorly",
     "files": [
       "main.js",
       "preload.js",
