@@ -11,8 +11,6 @@ export const lessonStart = (l) => { const d = parseYmd(l.date); const t = String
 export const lessonEnd = (l) => new Date(lessonStart(l).getTime() + (l.dur || 60) * 60000);
 export const endTime = (l) => { const t = String(l.time || '00:00').split(':').map(Number); const m = (t[0] || 0) * 60 + (t[1] || 0) + (l.dur || 60); return pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); };
 export const byStart = (a, b) => lessonStart(a) - lessonStart(b);
-const COLORS = ['#2446C8', '#176F49', '#B9660B', '#8A3FB5', '#C23A33', '#0F7C8C'];
-export const colorOf = (s) => { let h = 0; String(s).split('').forEach((c) => { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return COLORS[h % COLORS.length]; };
 export const upcoming = (c) => { const now = new Date(); return c.lessons.filter((l) => l.status === 'planned' && lessonEnd(l) >= now).sort(byStart); };
 export const normTime = (v) => { const m = /^(\d{1,2})[:.](\d{2})$/.exec(String(v || '').trim()); if (!m || +m[1] > 23 || +m[2] > 59) return ''; return pad(+m[1]) + ':' + m[2]; };
 export const nextDays = (n) => { const out = []; const d = new Date(); for (let i = 0; i < n; i++) { out.push(ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate() + i))); } return out; };

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, BackHandler, View, ActivityIndicator, Alert } from 'react-native';
 import { createApi } from './src/api';
-import { loadAcct, saveAcct, lastServer } from './src/store';
+import { loadAcct, saveAcct, lastServer, loadTheme } from './src/store';
+import { applyTheme } from './src/ui';
 import TeacherApp from './src/teacher';
 import { Welcome, Auth, Home, Course, RequestMove, Password, Board } from './src/screens';
 import { dayTime } from './src/util';
@@ -25,6 +26,7 @@ export default function App() {
   const api = useMemo(() => createApi({ getAcct: () => acctRef.current, onExpired: expired }), [expired]);
 
   useEffect(() => { (async () => {
+    applyTheme(await loadTheme());
     const a = await loadAcct(); setSrv(await lastServer());
     if (a) { acctRef.current = a; setAcctState(a); setStack([{ n: 'home' }]); }
     setReady(true);

@@ -25,7 +25,7 @@ const P={
   left:'<path d="M15 6l-6 6 6 6"/>',
   right:'<path d="M9 6l6 6-6 6"/>',
   check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
-  gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+  gear:'<path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/>',
   copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
   cal:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
@@ -528,17 +528,17 @@ function studentText(sid,pay){
   if(pay&&D.debt>0) out.push('','К оплате: '+money(D.debt));
   return out.join('\n');
 }
-const FILE_CSS=`:root{--bg:#EEF2F8;--grid:#DCE4F0;--surface:#fff;--ink:#14203A;--muted:#56647F;--line:#D0D9E7;--accent:#2446C8;--red:#C23A33;--red-soft:#FBE4E2;--ok:#176F49;--ok-soft:#DDF2E7}
-@media (prefers-color-scheme:dark){:root{--bg:#0D1322;--grid:#172138;--surface:#151D31;--ink:#E7ECF7;--muted:#9AA6BF;--line:#26324E;--accent:#8EA5FF;--red:#FF8A83;--red-soft:#3A1E24;--ok:#5FD3A0;--ok-soft:#14352A}}
+const FILE_CSS=`:root{--bg:#FAFAFA;--surface:#fff;--ink:#111;--muted:#6B6B6B;--line:#E4E4E4;--accent:#111;--red:#B42318;--red-soft:#FDEDEB;--ok:#166534;--ok-soft:#E8F5EC}
+@media (prefers-color-scheme:dark){:root{--bg:#0B0B0B;--surface:#141414;--ink:#EDEDED;--muted:#9A9A9A;--line:#272727;--accent:#EDEDED;--red:#F28B82;--red-soft:#2B1614;--ok:#5BD08A;--ok-soft:#12251A}}
 *{box-sizing:border-box}
-body{margin:0;font:16px/1.45 "Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));background:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/20px 20px,linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/20px 20px,var(--bg)}
+body{margin:0;font:16px/1.45 "Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));background:var(--bg)}
 main{max-width:640px;margin:0 auto}
 .eyebrow{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-h1{margin:2px 0 0;font:700 44px/1.05 "Caveat","Segoe Print","Bradley Hand",cursive;overflow-wrap:anywhere}
+h1{margin:2px 0 0;font-size:28px;line-height:1.15;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
 .grade{margin:2px 0 0;color:var(--muted)}
 h2{margin:28px 0 8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
 .les{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px}
 .when{display:flex;flex-direction:column;font-variant-numeric:tabular-nums}
 .when b{font-size:17px}.when span{font-size:13px;color:var(--muted)}
@@ -548,7 +548,7 @@ li{background:var(--surface);border:1px solid var(--line);border-radius:12px;pad
 .mv .note{color:var(--red)}
 .chip{display:inline-block;margin-top:6px;padding:1px 10px;border-radius:999px;font-size:12px;font-weight:600}
 .chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.bad{background:var(--red-soft);color:var(--red)}
-.owe{margin:16px 0 0;padding:10px 14px;border-radius:12px;background:var(--red-soft);color:var(--red)}
+.owe{margin:16px 0 0;padding:10px 14px;border-radius:10px;background:var(--red-soft);color:var(--red)}
 .empty{margin:0;color:var(--muted)}
 .foot{margin-top:32px;font-size:13px;color:var(--muted)}`;
 function studentHtml(sid,pay){
@@ -566,7 +566,7 @@ function studentHtml(sid,pay){
     +sec('Недавние уроки',D.past.map(l=>'<li class="les"><div class="when"><b>'+esc(fmtShort(l.date))+'</b></div><div><div class="t">'+esc(l.topic||'Урок')+'</div>'+payChip(l)+'</div></li>'),'');
   const owe=pay&&D.debt>0?'<p class="owe">К оплате: <b>'+esc(money(D.debt))+'</b></p>':'';
   return '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Занятия — '+esc(D.s.name)+'</title>'
-    +'<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Golos+Text:wght@400;600&display=swap" rel="stylesheet"><style>'+FILE_CSS+'</style></head><body><main>'
+    +'<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;600&display=swap" rel="stylesheet"><style>'+FILE_CSS+'</style></head><body><main>'
     +'<p class="eyebrow">Занятия</p><h1>'+esc(D.s.name)+'</h1>'+(D.s.grade?'<p class="grade">'+esc(D.s.grade)+'</p>':'')+owe+body
     +'<p class="foot">Обновлено: '+esc(stamp)+'. Если расписание изменится, репетитор пришлёт новый файл.</p></main></body></html>';
 }
@@ -731,7 +731,12 @@ function openSettings(){
   const accBtns=ac
     ?(ac.token?'<button class="btn" data-a="syncNow">Синхронизировать сейчас'+(syncInfo.state==='ok'?' (последний раз успешно)':syncInfo.state==='err'?' (была ошибка)':'')+'</button><button class="btn" data-a="acctPwd">Сменить пароль</button><button class="btn" data-a="acctLogout">Выйти из аккаунта</button>':'<button class="btn primary" data-a="acctLogin">Войти снова</button>')
     :'<button class="btn primary" data-a="acctLogin">Войти или создать аккаунт учителя</button><button class="btn" data-a="acctOther">Я ученик или родитель</button>';
+  const curTheme=window.Theme?window.Theme.get():'auto';
+  const themeBlock='<div class="field"><span class="lbl" id="p-theme-lbl">Тема оформления</span><div class="seg" role="radiogroup" aria-labelledby="p-theme-lbl">'
+    +[['auto','Авто'],['light','Светлая'],['dark','Тёмная']].map(o=>'<label><input type="radio" name="p-theme" value="'+o[0]+'"'+(curTheme===o[0]?' checked':'')+'><span>'+o[1]+'</span></label>').join('')
+    +'</div><span class="muted" style="font-size:13px">«Авто» повторяет тему системы.</span></div>';
   const body='<div class="field"><label for="p-cur">Валюта</label><input id="p-cur" type="text" maxlength="4" value="'+esc(S.prefs.currency)+'"></div>'
+    +themeBlock
     +accBlock
     +'<p class="muted">Все данные хранятся в одном файле на этом компьютере:</p><p class="muted" style="word-break:break-all">'+esc(dataPath)+'</p>'
     +'<p class="muted">Сохраняйте копию данных после важных изменений: так их можно перенести на другой компьютер или вернуть.</p>'
@@ -866,6 +871,7 @@ document.addEventListener('click',e=>{
   const fn=A[el.dataset.a]; if(fn) fn(el.dataset,el,e);
 });
 document.addEventListener('change',e=>{
+  if(e.target.name==='p-theme'&&window.Theme) window.Theme.set(e.target.value);
   if(e.target.id==='l-student') onLessonStudent();
   if(e.target.name==='l-status'){const b=$('#l-cancel-box');if(b) b.hidden=e.target.value!=='cancelled'}
 });

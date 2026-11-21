@@ -18,7 +18,7 @@ const BGS = new Set(['dots', 'grid', 'plain', 'axes']);
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const ROOM_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_ROOMS = 2000, MAX_ELS = 5000, MAX_CLIENTS = 20, MAX_EL_BYTES = 300000, MAX_SET = 300, MAX_DEL = 2000;
-const STATIC = { '/board.js': 'board.js', '/live.js': 'live.js', '/student.js': 'student.js', '/viewer.js': 'viewer.js' };
+const STATIC = { '/board.js': 'board.js', '/live.js': 'live.js', '/student.js': 'student.js', '/viewer.js': 'viewer.js', '/theme.js': 'theme.js' };
 const CODE_RE = /^[A-HJ-NP-Z2-9]{8,12}$/;
 const VK_RE = /^[A-Za-z0-9_-]{20,64}$/;
 const SID_RE = /^(?!__proto__$)[A-Za-z0-9_-]{1,40}$/;
