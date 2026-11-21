@@ -17,8 +17,7 @@ const lessonStart = (l) => { const d = parseYmd(l.date); const t = String(l.time
 const lessonEnd = (l) => new Date(lessonStart(l).getTime() + (l.dur || 60) * 60000);
 const endTime = (l) => { const t = String(l.time || '00:00').split(':').map(Number); const m = (t[0] || 0) * 60 + (t[1] || 0) + (l.dur || 60); return pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); };
 const byStart = (a, b) => lessonStart(a) - lessonStart(b);
-const COLORS = ['#2446C8', '#176F49', '#B9660B', '#8A3FB5', '#C23A33', '#0F7C8C'];
-const colorOf = (s) => { let h = 0; String(s).split('').forEach((c) => { h = (h * 31 + c.charCodeAt(0)) >>> 0; }); return COLORS[h % COLORS.length]; };
+const themeBtn = () => (window.Theme ? window.Theme.button('icon-btn') : '');
 const ROLE_NAME = { student: 'Ученик', parent: 'Родитель', teacher: 'Учитель' };
 const toast = (m) => { if (window.toast) window.toast(m); };
 
@@ -117,7 +116,7 @@ function upcoming(c) { const now = new Date(); return c.lessons.filter((l) => l.
 function renderCard(c) {
   const up = upcoming(c)[0], open = c.homework.filter((h) => h.status === 'given').length;
   const sub = c.as === 'parent' ? 'Ребёнок: ' + esc(c.student.name) : esc(c.teacher.name || 'Учитель');
-  return '<button class="p-course" data-p="course" data-cid="' + esc(c.cid) + '"><span class="p-course-top" style="background:' + colorOf(c.cid) + '"><b>' + esc(c.title) + '</b><span>' + sub + (c.as === 'parent' ? ' · ' + esc(c.teacher.name) : '') + '</span></span>'
+  return '<button class="p-course" data-p="course" data-cid="' + esc(c.cid) + '"><span class="p-course-top"><b>' + esc(c.title) + '</b><span>' + sub + (c.as === 'parent' ? ' · ' + esc(c.teacher.name) : '') + '</span></span>'
     + '<span class="p-course-body"><span>' + (up ? 'Ближайший урок: <b>' + esc(dayTime(up.date, up.time)) + '</b>' : 'Уроков в расписании нет') + '</span>'
     + '<span class="muted">' + (open ? 'Домашка к сдаче: ' + open : 'Домашки к сдаче нет') + '</span></span></button>';
 }
@@ -145,8 +144,8 @@ function renderCourse(c) {
   const mv = (l) => '<li class="p-mv"><div class="p-d">' + esc(dayTime(l.date, l.time)) + '</div><div>' + (l.movedTo ? 'Перенесён на <b>' + esc(dayTime(l.movedTo, l.movedToTime)) + '</b>' : 'Урок отменён') + '</div>' + (l.reason ? '<div class="p-reason">Причина: ' + esc(l.reason) + '</div>' : '') + '</li>';
   const hw = (h) => '<li class="p-hw"><div class="muted">' + (h.due ? 'Срок: <b>' + esc(fmtDM(parseYmd(h.due))) + '</b>' : 'Без срока') + (h.status === 'submitted' ? ' · сдано, учитель проверяет' : '') + '</div><div class="p-txt">' + esc(h.text) + '</div>'
     + (canMark ? '<button class="btn small' + (h.status === 'submitted' ? '' : ' primary') + '" data-p="hw" data-cid="' + esc(c.cid) + '" data-id="' + esc(h.id) + '" data-st="' + (h.status === 'submitted' ? 'given' : 'submitted') + '">' + (h.status === 'submitted' ? 'Снять отметку «сдано»' : 'Я сдал(а)') + '</button>' : '') + '</li>';
-  return '<div class="p-wrap"><div class="p-bar"><button class="btn small" data-p="back">← Мои курсы</button><span class="p-spacer"></span><button class="btn small" data-p="refresh">Обновить</button></div>'
-    + '<div class="p-band" style="background:' + colorOf(c.cid) + '"><h2>' + esc(c.title) + '</h2><p>' + esc(c.as === 'parent' ? 'Ребёнок: ' + c.student.name : c.student.name) + ' · учитель ' + esc(c.teacher.name) + '</p></div>'
+  return '<div class="p-wrap"><div class="p-bar"><button class="btn small" data-p="back">← Мои курсы</button><span class="p-spacer"></span><button class="btn small" data-p="refresh">Обновить</button>' + themeBtn() + '</div>'
+    + '<div class="p-band"><h2>' + esc(c.title) + '</h2><p>' + esc(c.as === 'parent' ? 'Ребёнок: ' + c.student.name : c.student.name) + ' · учитель ' + esc(c.teacher.name) + '</p></div>'
     + (c.as === 'parent' ? '<p class="muted p-note">Вы вошли как родитель: можно смотреть расписание, переносы и домашку.</p>' : '')
     + section('Ближайшие уроки', up.map(lesson), 'Пока уроков в расписании нет.')
     + section('Переносы и отмены', moved.map(mv), '')
@@ -161,14 +160,14 @@ function renderCourse(c) {
 /* ---------- отрисовка ---------- */
 function head(a) {
   return '<div class="p-bar"><div class="p-who"><b>' + esc(a.name) + '</b><span class="muted">' + ROLE_NAME[a.role] + '</span></div><span class="p-spacer"></span>'
-    + '<button class="btn small primary" data-p="joinOpen">Присоединиться к курсу</button><button class="btn small" data-p="pwd">Пароль</button><button class="btn small" data-p="logout">Выйти</button></div>';
+    + '<button class="btn small primary" data-p="joinOpen">Присоединиться к курсу</button><button class="btn small" data-p="pwd">Пароль</button><button class="btn small" data-p="logout">Выйти</button>' + themeBtn() + '</div>';
 }
 function render() {
   if (root.hidden) return;
   const a = B().getAcct();
   let h = '';
   if (P.view === 'welcome') {
-    h = '<div class="p-wrap p-narrow"><h1 class="p-title">Журнал репетитора</h1><p class="p-sub">' + (P.msg ? esc(P.msg) : 'Кто вы? Выберите, как вы будете пользоваться программой.') + '</p>'
+    h = '<div class="p-wrap p-narrow"><div class="p-bar"><span class="p-spacer"></span>' + themeBtn() + '</div><h1 class="p-title">Журнал репетитора</h1><p class="p-sub">' + (P.msg ? esc(P.msg) : 'Кто вы? Выберите, как вы будете пользоваться программой.') + '</p>'
       + '<div class="p-roles"><button class="p-role" data-p="role" data-role="student"><b>Я ученик</b><span>Смотрю свои уроки, домашку и рисую на доске вместе с учителем</span></button>'
       + '<button class="p-role" data-p="role" data-role="parent"><b>Я родитель</b><span>Слежу за занятиями ребёнка: расписание, переносы, домашка</span></button>'
       + '<button class="p-role" data-p="role" data-role="teacher"><b>Я учитель</b><span>Веду курсы, расписание, оплаты, домашку и доску</span></button></div>'
@@ -179,7 +178,7 @@ function render() {
     const title = { student: 'Вход для ученика', parent: 'Вход для родителя', teacher: 'Вход для учителя' }[P.role];
     const hint = reg ? (P.role === 'teacher' ? 'Создайте аккаунт учителя. Потом вы сможете заводить курсы и приглашать учеников по коду.' : P.role === 'student' ? 'После регистрации введите код курса, который дал учитель.' : 'После регистрации введите родительский код, который дал учитель.') : 'Введите логин и пароль, которые вы указали при регистрации.';
     const srv = '<div class="field"><label for="a-srv">Адрес сервера</label><input id="a-srv" type="text" autocomplete="off" placeholder="https://board.example.com" value="' + esc(P.server) + '"></div>';
-    h = '<div class="p-wrap p-narrow"><p><button class="link" data-p="' + (P.cancel ? 'cancel' : 'welcome') + '">← Назад</button></p><h1 class="p-title">' + title + '</h1><p class="p-sub">' + esc(P.msg || hint) + '</p>'
+    h = '<div class="p-wrap p-narrow"><div class="p-bar"><button class="link" data-p="' + (P.cancel ? 'cancel' : 'welcome') + '">← Назад</button><span class="p-spacer"></span>' + themeBtn() + '</div><h1 class="p-title">' + title + '</h1><p class="p-sub">' + esc(P.msg || hint) + '</p>'
       + '<form class="p-card p-form" data-form="auth" novalidate><div class="p-tabs"><button type="button" class="chip' + (!reg ? ' on' : '') + '" data-p="mode" data-mode="login">Войти</button><button type="button" class="chip' + (reg ? ' on' : '') + '" data-p="mode" data-mode="register">Создать аккаунт</button></div>'
       + (cfg ? '<details><summary class="muted">Сервер</summary>' + srv + '</details>' : srv)
       + (reg ? '<div class="field"><label for="a-name">' + (P.role === 'parent' ? 'Ваше имя' : 'Как вас зовут') + '</label><input id="a-name" type="text" maxlength="60" autocomplete="name"></div>' : '')

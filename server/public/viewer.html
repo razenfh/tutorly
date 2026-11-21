@@ -1,18 +1,27 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex">
+<script src="/theme.js"></script>
 <title>Занятия</title>
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Golos+Text:wght@400;600&display=swap" rel="stylesheet">
-<style>:root{--bg:#EEF2F8;--grid:#DCE4F0;--surface:#fff;--ink:#14203A;--muted:#56647F;--line:#D0D9E7;--accent:#2446C8;--red:#C23A33;--red-soft:#FBE4E2;--ok:#176F49;--ok-soft:#DDF2E7}
-@media (prefers-color-scheme:dark){:root{--bg:#0D1322;--grid:#172138;--surface:#151D31;--ink:#E7ECF7;--muted:#9AA6BF;--line:#26324E;--accent:#8EA5FF;--red:#FF8A83;--red-soft:#3A1E24;--ok:#5FD3A0;--ok-soft:#14352A}}
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>:root{color-scheme:light;--bg:#FAFAFA;--surface:#fff;--ink:#111;--muted:#6B6B6B;--line:#E4E4E4;--accent:#111;--accent-ink:#fff;--accent-soft:#F0F0F0;--red:#B42318;--red-soft:#FDEDEB;--ok:#166534;--ok-soft:#E8F5EC}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0B0B0B;--surface:#141414;--ink:#EDEDED;--muted:#9A9A9A;--line:#272727;--accent:#EDEDED;--accent-ink:#0B0B0B;--accent-soft:#1F1F1F;--red:#F28B82;--red-soft:#2B1614;--ok:#5BD08A;--ok-soft:#12251A}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0B0B0B;--surface:#141414;--ink:#EDEDED;--muted:#9A9A9A;--line:#272727;--accent:#EDEDED;--accent-ink:#0B0B0B;--accent-soft:#1F1F1F;--red:#F28B82;--red-soft:#2B1614;--ok:#5BD08A;--ok-soft:#12251A}
+.i-sun{display:none}
+:root[data-scheme="dark"] .i-sun{display:block}
+:root[data-scheme="dark"] .i-moon{display:none}
 *{box-sizing:border-box}
-body{margin:0;font:16px/1.45 "Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));background:linear-gradient(var(--grid) 1px,transparent 1px) 0 0/20px 20px,linear-gradient(90deg,var(--grid) 1px,transparent 1px) 0 0/20px 20px,var(--bg)}
-main{max-width:640px;margin:0 auto}
+body{margin:0;font:16px/1.45 "Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 40px max(16px,env(safe-area-inset-left));background:var(--bg)}
+main,.bar{max-width:640px;margin:0 auto}
+.bar{display:flex;justify-content:flex-end;margin-bottom:8px}
+.icon-btn{width:40px;height:40px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon-btn svg{width:18px;height:18px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .eyebrow{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-h1{margin:2px 0 0;font:700 44px/1.05 "Caveat","Segoe Print","Bradley Hand",cursive;overflow-wrap:anywhere}
+h1{margin:2px 0 0;font-size:28px;line-height:1.15;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere}
 .grade{margin:2px 0 0;color:var(--muted)}
 h2{margin:28px 0 8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
 .les{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px}
 .when{display:flex;flex-direction:column;font-variant-numeric:tabular-nums}
 .when b{font-size:17px}.when span{font-size:13px;color:var(--muted)}
@@ -22,15 +31,15 @@ li{background:var(--surface);border:1px solid var(--line);border-radius:12px;pad
 .mv .note{color:var(--red)}
 .chip{display:inline-block;margin-top:6px;padding:1px 10px;border-radius:999px;font-size:12px;font-weight:600}
 .chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.bad{background:var(--red-soft);color:var(--red)}
-.owe{margin:16px 0 0;padding:10px 14px;border-radius:12px;background:var(--red-soft);color:var(--red)}
+.owe{margin:16px 0 0;padding:10px 14px;border-radius:10px;background:var(--red-soft);color:var(--red)}
 .empty{margin:0;color:var(--muted)}
 .foot{margin-top:32px;font-size:13px;color:var(--muted)}
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;margin-top:8px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px/1 inherit;font-family:inherit;text-decoration:none;cursor:pointer}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;margin-top:8px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px/1 inherit;font-family:inherit;text-decoration:none;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn:disabled{opacity:.5;cursor:default}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .err{color:var(--red);font-weight:600}
 .state{margin:24px 0;color:var(--muted)}
-</style></head><body><main id="root"><p class="state">Загрузка…</p></main>
+</style></head><body><div class="bar"><button class="icon-btn" type="button" data-theme-toggle aria-label="Сменить тему" title="Сменить тему"><svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/></svg><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></svg></button></div><main id="root"><p class="state">Загрузка…</p></main>
 <script src="/viewer.js"></script>
 </body></html>

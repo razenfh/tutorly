@@ -7,3 +7,7 @@ export async function saveAcct(a) {
   try { if (a) { await SecureStore.setItemAsync(KEY, JSON.stringify(a)); await SecureStore.setItemAsync(SRV, a.server); } else await SecureStore.deleteItemAsync(KEY); } catch (e) { /* ignore */ }
 }
 export async function lastServer() { try { return (await SecureStore.getItemAsync(SRV)) || ''; } catch (e) { return ''; } }
+/* Тема оформления: 'auto', 'light' или 'dark'. Не зависит от аккаунта, остаётся после выхода. */
+const THEME = 'theme-v1';
+export async function loadTheme() { try { const v = await SecureStore.getItemAsync(THEME); return v === 'light' || v === 'dark' ? v : 'auto'; } catch (e) { return 'auto'; } }
+export async function saveTheme(v) { try { await SecureStore.setItemAsync(THEME, v === 'light' || v === 'dark' ? v : 'auto'); } catch (e) { /* ignore */ } }
