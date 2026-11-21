@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useReducer, useState, useCallback } from 're
 import { View, Alert, Share, AppState, BackHandler, ActivityIndicator, Pressable, Text } from 'react-native';
 import { createJournal } from './journal';
 import { bytes, newCode, newKey, showCode } from './rand';
-import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, Pick, Check, row, useTheme } from './ui';
+import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, Pick, Check, row, useTheme, ThemePick } from './ui';
 import { Board } from './screens';
 import { ymd, parseYmd, dayTime, fmtShort, fmtDM, byStart, lessonStart, lessonEnd, endTime, nextDays, dayChip, normTime } from './util';
 
@@ -285,6 +285,7 @@ function Requests({ ctx }) {
 
 /* ---------- ученики и курсы ---------- */
 function Students({ ctx }) {
+  const t = useTheme();
   const { S, J } = ctx;
   const debt = (id) => ctx.lessons().filter((l) => l.studentId === id && l.status === 'done' && !l.paid).reduce((a, l) => a + num(l.price), 0);
   return (
@@ -296,7 +297,7 @@ function Students({ ctx }) {
         <Card key={s.id} onPress={() => ctx.push({ n: 'student', id: s.id })} style={s.archived ? { opacity: 0.6 } : null}>
           <T bold>{s.name + (s.archived ? ' (архив)' : '')}</T>
           <T muted size={13}>{[s.grade, s.price ? s.price + ' за урок' : ''].filter(Boolean).join(' · ')}</T>
-          {debt(s.id) > 0 ? <T bold color="#B3261E">{'Долг: ' + debt(s.id)}</T> : null}
+          {debt(s.id) > 0 ? <T bold color={t.red}>{'Долг: ' + debt(s.id)}</T> : null}
         </Card>
       ))}
       {!ctx.students().length ? <T muted>Учеников пока нет.</T> : null}
@@ -509,6 +510,7 @@ function Settings({ ctx, onLogout, onPassword }) {
       <Btn small title="← Назад" onPress={ctx.pop} />
       <H1>Настройки</H1>
       <Card><T bold>{acct.name}</T><T muted>Учитель · логин: {acct.login}</T><T muted size={13}>{acct.server}</T></Card>
+      <ThemePick />
       <Btn title="Синхронизировать сейчас" onPress={() => ctx.act(ctx.J.refreshStrict(), 'Синхронизировано')} />
       <Btn title="Сменить пароль" onPress={() => { ctx.pop(); onPassword(); }} />
       <Btn kind="danger" title="Выйти из аккаунта" onPress={onLogout} />

@@ -235,12 +235,12 @@ function drawBg(ctx, bg, x, y, w, h, z) {
   while (base * z < 14) base *= 2;
   const x0 = Math.floor(x / base) * base, y0 = Math.floor(y / base) * base;
   if (bg === 'dots') {
-    ctx.fillStyle = '#b7c2d4';
+    ctx.fillStyle = '#BDBDBD';
     const r = 1.6 / Math.max(z, 0.5);
     for (let gx = x0; gx <= x + w; gx += base) for (let gy = y0; gy <= y + h; gy += base) ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
     return;
   }
-  ctx.strokeStyle = '#d3dcea'; ctx.lineWidth = 1 / z; ctx.lineCap = 'butt';
+  ctx.strokeStyle = '#E2E2E2'; ctx.lineWidth = 1 / z; ctx.lineCap = 'butt';
   ctx.beginPath();
   for (let gx = x0; gx <= x + w; gx += base) { ctx.moveTo(gx, y); ctx.lineTo(gx, y + h); }
   for (let gy = y0; gy <= y + h; gy += base) { ctx.moveTo(x, gy); ctx.lineTo(x + w, gy); }
@@ -310,7 +310,7 @@ function drawEl(ctx, el, skipText) {
         ctx.drawImage(im, el.x, el.y, el.w, el.h);
       } else { // ещё грузится или не открылась
         ctx.save();
-        ctx.fillStyle = '#eef1f6'; ctx.strokeStyle = '#b7c2d4'; ctx.lineWidth = 1;
+        ctx.fillStyle = '#F1F1F1'; ctx.strokeStyle = '#BDBDBD'; ctx.lineWidth = 1;
         ctx.fillRect(el.x, el.y, el.w, el.h); ctx.strokeRect(el.x, el.y, el.w, el.h);
         ctx.restore();
       }

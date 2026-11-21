@@ -1,15 +1,29 @@
-import React from 'react';
-import { Text, View, Pressable, TextInput, StyleSheet, useColorScheme, ScrollView, RefreshControl, SafeAreaView, Platform, StatusBar } from 'react-native';
+import React, { useState } from 'react';
+import { Text, View, Pressable, TextInput, StyleSheet, useColorScheme, Appearance, ScrollView, RefreshControl, SafeAreaView, Platform, StatusBar } from 'react-native';
+import { saveTheme } from './store';
 
-const LIGHT = { bg: '#F7F7F4', surface: '#FFFFFF', ink: '#16181D', muted: '#6B7078', line: '#DDDCD5', accent: '#2446C8', accentInk: '#FFFFFF', soft: '#E2E8FB', red: '#B3261E', ok: '#176F49' };
-const DARK = { bg: '#101216', surface: '#1A1D23', ink: '#ECEDEF', muted: '#9AA0A8', line: '#2C3038', accent: '#8EA5FF', accentInk: '#0D1322', soft: '#1F2A4D', red: '#FF8A80', ok: '#6FD3A0' };
+/* Строгая нейтральная палитра: акцент совпадает с цветом текста (чёрный на светлом, белый на тёмном). */
+const LIGHT = { dark: false, bg: '#FAFAFA', surface: '#FFFFFF', ink: '#111111', muted: '#6B6B6B', line: '#E4E4E4', accent: '#111111', accentInk: '#FFFFFF', soft: '#F0F0F0', red: '#B42318', ok: '#166534' };
+const DARK = { dark: true, bg: '#0B0B0B', surface: '#141414', ink: '#EDEDED', muted: '#9A9A9A', line: '#272727', accent: '#EDEDED', accentInk: '#0B0B0B', soft: '#1F1F1F', red: '#F28B82', ok: '#5BD08A' };
 export const useTheme = () => (useColorScheme() === 'dark' ? DARK : LIGHT);
+
+/* Выбор темы: 'auto' (как в системе), 'light', 'dark'. Appearance.setColorScheme переопределяет схему для всего приложения. */
+let themePref = 'auto';
+export function applyTheme(pref) {
+  themePref = pref === 'light' || pref === 'dark' ? pref : 'auto';
+  try { if (Appearance.setColorScheme) Appearance.setColorScheme(themePref === 'auto' ? null : themePref); } catch (e) { /* старая версия React Native: остаётся тема системы */ }
+}
+export function ThemePick() {
+  const [v, setV] = useState(themePref);
+  return <Pick label="Тема оформления" options={[['auto', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']]} value={v} onChange={(x) => { setV(x); applyTheme(x); saveTheme(x); }} />;
+}
 
 export function Screen({ children, onRefresh, refreshing, scroll = true }) {
   const t = useTheme();
   const top = Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg, paddingTop: top }}>
+      <StatusBar barStyle={t.dark ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
       {scroll ? (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 12 }} keyboardShouldPersistTaps="handled"
           refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={t.accent} /> : undefined}>
@@ -27,7 +41,7 @@ export function H1({ children }) { return <T bold size={28} style={{ marginBotto
 export function H3({ children }) { return <T bold size={16} style={{ marginTop: 10 }}>{children}</T>; }
 export function Card({ children, style, onPress }) {
   const t = useTheme();
-  const s = [{ backgroundColor: t.surface, borderColor: t.line, borderWidth: 1, borderRadius: 14, padding: 14, gap: 6 }, style];
+  const s = [{ backgroundColor: t.surface, borderColor: t.line, borderWidth: 1, borderRadius: 10, padding: 14, gap: 6 }, style];
   return onPress ? <Pressable onPress={onPress} style={s}>{children}</Pressable> : <View style={s}>{children}</View>;
 }
 export function Btn({ title, onPress, kind, disabled, small }) {
@@ -36,7 +50,7 @@ export function Btn({ title, onPress, kind, disabled, small }) {
   const fg = kind === 'primary' ? t.accentInk : kind === 'danger' ? t.red : t.ink;
   return (
     <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button"
-      style={{ minHeight: small ? 38 : 48, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: kind === 'primary' ? t.accent : t.line, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.55 : 1, alignSelf: small ? 'flex-start' : 'stretch' }}>
+      style={{ minHeight: small ? 38 : 48, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: kind === 'primary' ? t.accent : t.line, backgroundColor: bg, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.55 : 1, alignSelf: small ? 'flex-start' : 'stretch' }}>
       <Text style={{ color: fg, fontWeight: '600', fontSize: small ? 14 : 16 }}>{title}</Text>
     </Pressable>
   );
@@ -47,7 +61,7 @@ export function Field({ label, ...p }) {
     <View style={{ gap: 4 }}>
       <T muted size={13} bold>{label}</T>
       <TextInput placeholderTextColor={t.muted} {...p}
-        style={{ minHeight: 48, borderWidth: 1, borderColor: t.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: t.ink, backgroundColor: t.surface, fontSize: 16, textAlignVertical: p.multiline ? 'top' : 'center' }} />
+        style={{ minHeight: 48, borderWidth: 1, borderColor: t.line, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: t.ink, backgroundColor: t.surface, fontSize: 16, textAlignVertical: p.multiline ? 'top' : 'center' }} />
     </View>
   );
 }

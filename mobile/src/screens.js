@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, row, useTheme } from './ui';
-import { colorOf, dayTime, fmtDM, parseYmd, fmtShort, endTime, byStart, lessonEnd, upcoming, normTime, nextDays, dayChip } from './util';
+import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, row, useTheme, ThemePick } from './ui';
+import { dayTime, fmtDM, parseYmd, fmtShort, endTime, byStart, lessonEnd, upcoming, normTime, nextDays, dayChip } from './util';
 import { SERVER } from './config';
 
 export function Welcome({ onRole }) {
@@ -17,6 +17,7 @@ export function Welcome({ onRole }) {
       <Role id="student" title="Я ученик" text="Мои уроки, домашка и доска на занятии" />
       <Role id="parent" title="Я родитель" text="Расписание, переносы и домашка ребёнка" />
       <Role id="teacher" title="Я учитель" text="Расписание, оплаты, домашка и доска с телефона" />
+      <ThemePick />
     </Screen>
   );
 }
@@ -93,17 +94,19 @@ export function Home({ acct, courses, loaded, refreshing, onRefresh, onOpen, api
       {!loaded ? <ActivityIndicator /> : null}
       {courses.map((c) => <CourseCard key={c.cid} c={c} onPress={() => onOpen(c.cid)} />)}
       {loaded && !courses.length ? <T muted>Пока нет ни одного курса. Введите код, который дал учитель.</T> : null}
+      <ThemePick />
     </Screen>
   );
 }
 
 function CourseCard({ c, onPress }) {
+  const t = useTheme();
   const up = upcoming(c)[0], open = c.homework.filter((h) => h.status === 'given').length;
   return (
     <Card onPress={onPress} style={{ padding: 0, overflow: 'hidden', gap: 0 }}>
-      <View style={{ backgroundColor: colorOf(c.cid), padding: 14, minHeight: 84, justifyContent: 'flex-end' }}>
-        <T bold size={19} color="#fff">{c.title}</T>
-        <T size={13} color="#fff">{c.as === 'parent' ? 'Ребёнок: ' + c.student.name : c.teacher.name || 'Учитель'}</T>
+      <View style={{ backgroundColor: t.soft, borderBottomWidth: 1, borderBottomColor: t.line, padding: 14, minHeight: 84, justifyContent: 'flex-end' }}>
+        <T bold size={19}>{c.title}</T>
+        <T muted size={13}>{c.as === 'parent' ? 'Ребёнок: ' + c.student.name : c.teacher.name || 'Учитель'}</T>
       </View>
       <View style={{ padding: 12, gap: 2 }}>
         <T>{up ? 'Ближайший урок: ' + dayTime(up.date, up.time) : 'Уроков в расписании нет'}</T>
@@ -140,9 +143,9 @@ export function Course({ c, refreshing, onRefresh, onBack, onBoard, onRequest, a
   return (
     <Screen onRefresh={onRefresh} refreshing={refreshing}>
       <Btn small title="← Мои курсы" onPress={onBack} />
-      <View style={{ backgroundColor: colorOf(c.cid), borderRadius: 14, padding: 18 }}>
-        <T bold size={24} color="#fff">{c.title}</T>
-        <T color="#fff">{(c.as === 'parent' ? 'Ребёнок: ' : '') + c.student.name + ' · учитель ' + c.teacher.name}</T>
+      <View style={{ backgroundColor: t.soft, borderWidth: 1, borderColor: t.line, borderRadius: 10, padding: 18 }}>
+        <T bold size={24}>{c.title}</T>
+        <T muted>{(c.as === 'parent' ? 'Ребёнок: ' : '') + c.student.name + ' · учитель ' + c.teacher.name}</T>
       </View>
       {c.as === 'parent' ? <T muted size={13}>Вы вошли как родитель: можно смотреть расписание, переносы и домашку.</T> : null}
       <H3>Ближайшие уроки</H3>
