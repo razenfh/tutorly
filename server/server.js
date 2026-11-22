@@ -88,7 +88,7 @@ function start(opts) {
     (Array.isArray(j.els) ? j.els : []).forEach((e) => { if (okEl(e) && (e.k !== 'image' || e.src)) els.set(e.id, e); });
     return {
       id: j.id, owner: typeof j.owner === 'string' ? j.owner : '', tk: j.tk, sk: j.sk, write: j.write !== false, bg: BGS.has(j.bg) ? j.bg : 'dots',
-      els: els, clients: new Set(), seq: 0, dirty: false, timer: null, evict: null, deleted: false,
+      hw: typeof j.hw === 'string' && ID_RE.test(j.hw) ? j.hw : '', eff: true, els: els, clients: new Set(), seq: 0, dirty: false, timer: null, evict: null, deleted: false,
     };
   }
   function loadRoom(id) {
@@ -106,13 +106,49 @@ function start(opts) {
     if (!r.dirty || r.deleted) return;
     r.dirty = false;
     const f = roomFile(r.id), tmp = f + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ id: r.id, owner: r.owner, tk: r.tk, sk: r.sk, write: r.write, bg: r.bg, els: Array.from(r.els.values()) }));
+    fs.writeFileSync(tmp, JSON.stringify({ id: r.id, owner: r.owner, tk: r.tk, sk: r.sk, write: r.write, bg: r.bg, hw: r.hw, els: Array.from(r.els.values()) }));
     fs.renameSync(tmp, f);
   }
   function persist(r) {
     r.dirty = true;
     if (r.timer) return;
     r.timer = setTimeout(() => { r.timer = null; try { saveRoom(r); } catch (e) { console.error('save', e.message); } }, 1000);
+  }
+
+  /* доска домашнего задания: ученик рисует, пока задание «задано» или «на доработке».
+     После сдачи и проверки она только для просмотра, а учитель рисует всегда */
+  const hwOpen = (room) => {
+    if (!room.hw) return true;
+    const j = getJournal(room.owner), h = j && j.hwRec(room.hw);
+    return !!h && (h.status === 'given' || h.status === 'returned' || !h.status);
+  };
+  const effWrite = (room) => room.write && hwOpen(room);
+  function pushHwPerms(tid) {
+    rooms.forEach((r) => {
+      if (r.owner !== tid || !r.hw) return;
+      const w = effWrite(r);
+      if (w !== r.eff) { r.eff = w; broadcast(r, { t: 'perm', write: w }); }
+    });
+  }
+  function removeRoom(r) {
+    r.deleted = true;
+    r.clients.forEach((c) => { try { c.ws.close(4404, 'deleted'); } catch (e) { /* ignore */ } });
+    rooms.delete(r.id);
+    try { fs.unlinkSync(roomFile(r.id)); } catch (e) { /* ignore */ }
+  }
+  function ensureHwRoom(tid, hwId) {
+    const j = getJournal(tid), h = j && j.hwRec(hwId);
+    if (!h) throw mkErr('none', 'Задание не найдено.');
+    const cur = h.room && typeof h.room.id === 'string' ? loadRoom(h.room.id) : null;
+    if (cur && cur.owner === tid && cur.hw === hwId) return { id: cur.id, tk: cur.tk, sk: cur.sk };
+    let count = 0;
+    try { count = fs.readdirSync(ROOMS_DIR).length; } catch (e) { /* ignore */ }
+    if (count >= MAX_ROOMS) throw mkErr('full', 'Достигнут лимит досок на сервере.');
+    const id = token(16), tk = token(24), sk = token(24);
+    const r = makeRoom({ id: id, owner: tid, tk: tk, sk: sk, write: true, bg: 'dots', els: [], hw: hwId });
+    rooms.set(id, r); r.dirty = true; saveRoom(r);
+    j.setHwRoom(hwId, { id: id, tk: tk, sk: sk });
+    return { id: id, tk: tk, sk: sk };
   }
 
   function okEl(e) {
@@ -249,9 +285,12 @@ function start(opts) {
     /* --- учитель: журнал, комнаты доски, участники курса --- */
     if (p === '/api/sync' && m === 'POST') {
       const a = teacher(), b = await readJson(req, 5 * 1024 * 1024), j = getJournal(a.id);
+      const tomb = b.changes && Array.isArray(b.changes.tomb) ? b.changes.tomb : [];
+      const hwRooms = tomb.filter((t) => t && t.k === 'homework' && typeof t.id === 'string').map((t) => { const h = j.hwRec(t.id); return h && h.room ? { id: t.id, room: h.room.id } : null; }).filter(Boolean);
       const out = j.sync(b.since, b.changes);
       reindex(a.id);
-      const tomb = b.changes && Array.isArray(b.changes.tomb) ? b.changes.tomb : [];
+      hwRooms.forEach((x) => { if (!j.hwRec(x.id)) { const r = loadRoom(x.room); if (r && r.owner === a.id) removeRoom(r); } });
+      pushHwPerms(a.id);
       tomb.forEach((t) => { if (t && t.k === 'students' && typeof t.id === 'string' && SID_RE.test(t.id) && !j.studentRec(t.id)) auth.dropCourse(a.id, t.id); });
       return sendJson(res, 200, out);
     }
@@ -270,11 +309,14 @@ function start(opts) {
     if (rm && m === 'DELETE') {
       const a = teacher(), r = loadRoom(rm[1]);
       if (!r || r.owner !== a.id) throw mkErr('none', 'Доска не найдена.');
-      r.deleted = true;
-      r.clients.forEach((c) => { try { c.ws.close(4404, 'deleted'); } catch (e) { /* ignore */ } });
-      rooms.delete(r.id);
-      try { fs.unlinkSync(roomFile(r.id)); } catch (e) { /* ignore */ }
+      removeRoom(r);
       return sendJson(res, 200, { ok: true });
+    }
+    const hb = p.match(/^\/api\/homework\/([A-Za-z0-9_-]{1,40})\/board$/);
+    if (hb && m === 'POST') {
+      const a = teacher();
+      await readJson(req, 1024);
+      return sendJson(res, 200, ensureHwRoom(a.id, hb[1]));
     }
     const mm = p.match(/^\/api\/members\/([A-Za-z0-9_-]{1,40})(?:\/([A-Za-z0-9_-]{1,40})(?:\/(reset))?)?$/);
     if (mm) {
@@ -305,22 +347,31 @@ function start(opts) {
       return sendJson(res, 200, { course: courseSummary(a, mem) });
     }
     if (p === '/api/my/courses' && m === 'GET') return sendJson(res, 200, { courses: myCourses(me()) });
-    const cm = p.match(/^\/api\/my\/courses\/([A-Za-z0-9_-]{8,40}:[A-Za-z0-9_-]{1,40})(?:\/hw\/([A-Za-z0-9_-]{1,40})|\/(requests))?$/);
+    const cm = p.match(/^\/api\/my\/courses\/([A-Za-z0-9_-]{8,40}:[A-Za-z0-9_-]{1,40})(?:\/hw\/([A-Za-z0-9_-]{1,40})(\/board)?|\/(requests))?$/);
     if (cm) {
       const a = me(), mem = a.m.find((x) => x.t + ':' + x.s === cm[1]);
       if (!mem) throw mkErr('none', 'Курс не найден.');
-      if (m === 'POST' && cm[3] === 'requests') {
+      if (m === 'POST' && cm[4] === 'requests') {
         const b = await readJson(req, 2048), j = getJournal(mem.t);
         const x = j.addRequestOf(j.studentRec(mem.s), mem.as, b);
         if (x.err) throw mkErr('invalid', x.err);
         return sendJson(res, 201, x.req);
       }
-      if (m === 'DELETE' && !cm[2] && !cm[3]) { auth.removeCourse(a.id, mem.t, mem.s); return sendJson(res, 200, { ok: true }); }
+      if (m === 'DELETE' && !cm[2] && !cm[4]) { auth.removeCourse(a.id, mem.t, mem.s); return sendJson(res, 200, { ok: true }); }
+      if (m === 'POST' && cm[2] && cm[3]) {
+        if (mem.as !== 'student') throw mkErr('forbidden', 'Доска задания доступна ученику.');
+        await readJson(req, 1024);
+        const j = getJournal(mem.t), h = j.hwRec(cm[2]);
+        if (!h || h.studentId !== mem.s) throw mkErr('none', 'Задание не найдено.');
+        const rm2 = ensureHwRoom(mem.t, cm[2]);
+        return sendJson(res, 200, { id: rm2.id, sk: rm2.sk });
+      }
       if (m === 'POST' && cm[2]) {
         if (mem.as !== 'student') throw mkErr('forbidden', 'Родитель может только смотреть.');
         const b = await readJson(req, 1024), j = getJournal(mem.t);
         const h = j.markHwOf(j.studentRec(mem.s), cm[2], b.status);
         if (!h) throw mkErr('none', 'Задание не найдено или уже проверено.');
+        pushHwPerms(mem.t);
         return sendJson(res, 200, h);
       }
     }
@@ -352,7 +403,7 @@ function start(opts) {
       return;
     }
     /* страница ученика по ссылке без регистрации */
-    const vm = p.match(/^\/v\/([A-Za-z0-9_-]{20,64})\/(data|hw\/([A-Za-z0-9_-]{1,40}))$/);
+    const vm = p.match(/^\/v\/([A-Za-z0-9_-]{20,64})\/(data|hw\/([A-Za-z0-9_-]{1,40})(\/board)?)$/);
     if (vm) {
       const ip = clientIp(req);
       if (reqLimit.hit(ip) > 120 || failLimit.count(ip) > 20) { sendJson(res, 429, { error: 'rate' }); return; }
@@ -363,10 +414,20 @@ function start(opts) {
         sendJson(res, 200, v);
         return;
       }
+      if (req.method === 'POST' && vm[3] && vm[4]) {
+        readJson(req, 2000).then(() => {
+          const stu = j && j.studentByKey(vm[1]), h = stu && j.hwRec(vm[3]);
+          if (!h || h.studentId !== stu.id) { failLimit.hit(ip); sendJson(res, 404, { error: 'none' }); return; }
+          const r2 = ensureHwRoom(tid, vm[3]);
+          sendJson(res, 200, { id: r2.id, sk: r2.sk });
+        }, () => sendJson(res, 400, { error: 'json' }));
+        return;
+      }
       if (req.method === 'POST' && vm[3]) {
         readJson(req, 2000).then((b) => {
           const h = j && j.markHw(vm[1], vm[3], b.status);
           if (!h) { failLimit.hit(ip); sendJson(res, 404, { error: 'none' }); return; }
+          pushHwPerms(tid);
           sendJson(res, 200, h);
         }, () => sendJson(res, 400, { error: 'json' }));
         return;
@@ -426,7 +487,7 @@ function start(opts) {
     const rej = (id) => { if (typeof id === 'string' && ID_RE.test(id) && rejected.size < 2000) rejected.add(id); };
     let fix = null, denied = false;
     try {
-      if (c.role !== 'tutor' && !room.write) {
+      if (c.role !== 'tutor' && !effWrite(room)) {
         denied = true;
         sendTo(c, { t: 'deny' });
         (Array.isArray(m.set) ? m.set : []).forEach((e) => rej(e && e.id));
@@ -478,7 +539,7 @@ function start(opts) {
         if (typeof m.x === 'number' && typeof m.y === 'number' && isFinite(m.x) && isFinite(m.y)) broadcast(room, { t: 'cur', id: c.id, role: c.role, x: m.x, y: m.y }, c);
         break;
       case 'perm':
-        if (c.role === 'tutor' && typeof m.write === 'boolean') { room.write = m.write; persist(room); broadcast(room, { t: 'perm', write: room.write }); }
+        if (c.role === 'tutor' && typeof m.write === 'boolean') { room.write = m.write; persist(room); room.eff = effWrite(room); broadcast(room, { t: 'perm', write: room.eff }); }
         break;
     }
   }
@@ -512,7 +573,8 @@ function start(opts) {
         room.evict.unref();
       }
     });
-    sendTo(c, { t: 'hello', role: role, id: c.id, ack: 1, room: room.id, write: room.write, bg: room.bg, els: Array.from(room.els.values()) });
+    room.eff = effWrite(room);
+    sendTo(c, { t: 'hello', role: role, id: c.id, ack: 1, room: room.id, write: room.eff, hw: !!room.hw, bg: room.bg, els: Array.from(room.els.values()) });
     broadcast(room, peersMsg(room));
   }
   server.on('upgrade', (req, socket, head) => {

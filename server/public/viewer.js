@@ -66,11 +66,27 @@ function hwItem(h) {
   if (h.due) { meta.appendChild(document.createTextNode('Срок: ')); meta.appendChild(el('b', '', fmtDM(parseYmd(h.due)))); }
   else meta.appendChild(document.createTextNode('Без срока'));
   if (h.status === 'submitted') meta.appendChild(document.createTextNode(' · сдано, репетитор проверяет'));
+  else if (h.status === 'returned') meta.appendChild(document.createTextNode(' · нужно доработать'));
+  else if (h.due && h.due < todayStr()) meta.appendChild(document.createTextNode(' · срок прошёл'));
   add(li, meta, el('div', 'txt', h.text));
-  const b = el('button', h.status === 'submitted' ? 'btn' : 'btn primary', h.status === 'submitted' ? 'Снять отметку «сдано»' : 'Я сдал(а)');
+  if (h.comment) add(li, el('div', 'note', 'Комментарий репетитора: ' + h.comment));
+  const bd = el('button', h.status === 'submitted' ? 'btn' : 'btn primary', h.status === 'submitted' ? 'Открыть работу' : 'Решать на доске');
+  bd.type = 'button';
+  bd.addEventListener('click', () => openBoard(h, bd));
+  const b = el('button', 'btn', h.status === 'submitted' ? 'Снять отметку «сдано»' : h.status === 'returned' ? 'Сдать снова' : 'Я сдал(а)');
   b.type = 'button';
   b.addEventListener('click', () => mark(h, b));
-  return add(li, b);
+  return add(li, bd, b);
+}
+function todayStr() { const n = new Date(); return n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate()); }
+async function openBoard(h, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch('/v/' + key + '/hw/' + encodeURIComponent(h.id) + '/board', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (!r.ok) throw new Error('http');
+    const j = await r.json();
+    location.href = '/r/' + encodeURIComponent(j.id) + '?k=' + encodeURIComponent(j.sk);
+  } catch (e) { btn.disabled = false; alert('Не получилось открыть доску. Попробуйте ещё раз.'); }
 }
 function section(parent, title, items, none) {
   if (!items.length && !none) return;
@@ -92,7 +108,14 @@ function render() {
   section(main, 'Ближайшие уроки', upcoming.map(lessonItem), 'Пока уроков в расписании нет.');
   section(main, 'Переносы и отмены', moved.map(movedItem), '');
   section(main, 'Домашнее задание', hwOpen.map(hwItem), 'Сейчас заданий нет.');
-  section(main, 'Проверено', hwDone.map((h) => { const li = el('li', 'hw'); return add(li, el('div', 'txt', h.text)); }), '');
+  if (hwOpen.length) add(main, el('p', 'empty', 'Решите задание на доске, затем вернитесь сюда и нажмите «Я сдал(а)».'));
+  section(main, 'Проверено', hwDone.map((h) => {
+    const li = el('li', 'hw');
+    add(li, el('div', 'txt', h.text));
+    if (h.comment) add(li, el('div', 'note', 'Комментарий репетитора: ' + h.comment));
+    if (h.room) { const b = el('button', 'btn', 'Посмотреть проверку'); b.type = 'button'; b.addEventListener('click', () => openBoard(h, b)); add(li, b); }
+    return li;
+  }), '');
   section(main, 'Недавние уроки', past.map((l) => {
     const li = el('li', 'les'), w = el('div', 'when'), c = el('div');
     add(w, el('b', '', fmtShort(l.date)));

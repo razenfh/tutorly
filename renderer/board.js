@@ -1243,6 +1243,7 @@ async function open(opts) {
     if (sh) { sh.hidden = !s.onShare; sh.textContent = 'Совместная доска'; }
     if (lk) lk.hidden = true;
     if (wr) wr.hidden = true;
+    [0, 1].forEach((i) => { const b = $('bAct' + i), a = opts.actions && opts.actions[i]; if (!b) return; b.hidden = !a; if (a) { b.textContent = a.title; b.onclick = () => a.onClick(); } });
     if (lv) { lv.textContent = ''; lv.hidden = true; }
     $('board').classList.remove('ro'); }
   $('board').hidden = false;
@@ -1438,6 +1439,7 @@ function receive(m) {
   switch (m.t) {
     case 'hello': {
       sy.role = m.role === 'tutor' ? 'tutor' : 'student';
+      if (m.hw === true && sy.role === 'tutor' && !sy.inked) { sy.inked = true; st.color = INK[2][0]; } // проверка домашки: учитель по умолчанию рисует красным
       sy.ack = m.ack === 1; // старый сервер не присылает ack: тогда «в пути» не отслеживаем, иначе чужие правки не применялись бы никогда
       const rid = sy.ack && typeof m.room === 'string' ? m.room : '';
       if (st.confRoom !== rid) { st.conf = new Set(); st.confRoom = rid; } // подтверждённые объекты другой комнаты тут ни при чём
