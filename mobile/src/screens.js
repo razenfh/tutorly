@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, row, useTheme, ThemePick } from './ui';
@@ -30,7 +30,13 @@ export function Auth({ role, api, initialServer, onDone, onBack }) {
   const [login, setLogin] = useState('');
   const [pass, setPass] = useState('');
   const [invite, setInvite] = useState('');
+  const [needInvite, setNeedInvite] = useState(false);
   const [err, setErr] = useState('');
+  useEffect(() => {
+    /* код регистрации учителя показываем, только если сервер его требует */
+    if (role !== 'teacher' || !server) return;
+    fetch(server.replace(/\/+$/, '') + '/auth/info').then((r) => r.json()).then((j) => setNeedInvite(!!j.teacherInvite)).catch(() => {});
+  }, [role, server]);
   const [busy, setBusy] = useState(false);
   const reg = mode === 'register';
   async function go() {
@@ -55,7 +61,7 @@ export function Auth({ role, api, initialServer, onDone, onBack }) {
       {SERVER ? null : <Field label="Адрес сервера" value={server} onChangeText={setServer} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://board.example.com" />}
       {reg ? <Field label={role === 'parent' ? 'Ваше имя' : 'Как вас зовут'} value={name} onChangeText={setName} maxLength={60} /> : null}
       <Field label="Логин" value={login} onChangeText={setLogin} autoCapitalize="none" autoCorrect={false} maxLength={32} />
-      {reg && role === 'teacher' ? <Field label="Код регистрации учителя (если сервер его требует)" value={invite} onChangeText={setInvite} autoCapitalize="none" autoCorrect={false} /> : null}
+      {reg && role === 'teacher' && needInvite ? <Field label="Код регистрации учителя" value={invite} onChangeText={setInvite} autoCapitalize="none" autoCorrect={false} /> : null}
       <Field label="Пароль" value={pass} onChangeText={setPass} secureTextEntry autoCapitalize="none" maxLength={128} />
       <Err>{err}</Err>
       <Btn kind="primary" title={busy ? 'Подождите…' : reg ? 'Создать аккаунт' : 'Войти'} onPress={go} disabled={busy} />

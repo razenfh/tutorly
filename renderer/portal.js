@@ -74,7 +74,7 @@ function showWelcome(o) {
 function showAuth(role, o) {
   o = o || {};
   stopTimer(); P.view = 'auth'; P.role = role; P.mode = o.mode || 'login'; P.err = ''; P.msg = o.msg || ''; P.cancel = !!o.cancel; P.prefLogin = o.login || '';
-  P.server = P.server || B().lastServer() || (window.APP_CONFIG && window.APP_CONFIG.server) || '';
+  P.server = (window.APP_CONFIG && window.APP_CONFIG.server) || P.server || B().lastServer() || '';
   P.invite = false; show(); render();
   const base = window.APP_CONFIG && window.APP_CONFIG.server;
   if (P.server || base) fetch((P.server || base).replace(/\/+$/, '') + '/auth/info').then((r) => r.json()).then((j) => { P.invite = !!j.teacherInvite; if (P.view === 'auth') keepRender(); }).catch(() => {});
@@ -183,7 +183,7 @@ function render() {
     const srv = '<div class="field"><label for="a-srv">Адрес сервера</label><input id="a-srv" type="text" autocomplete="off" placeholder="https://board.example.com" value="' + esc(P.server) + '"></div>';
     h = '<div class="p-wrap p-narrow"><div class="p-bar"><button class="link" data-p="' + (P.cancel ? 'cancel' : 'welcome') + '">← Назад</button><span class="p-spacer"></span>' + themeBtn() + '</div><h1 class="p-title">' + title + '</h1><p class="p-sub">' + esc(P.msg || hint) + '</p>'
       + '<form class="p-card p-form" data-form="auth" novalidate><div class="p-tabs"><button type="button" class="chip' + (!reg ? ' on' : '') + '" data-p="mode" data-mode="login">Войти</button><button type="button" class="chip' + (reg ? ' on' : '') + '" data-p="mode" data-mode="register">Создать аккаунт</button></div>'
-      + (cfg ? '<details><summary class="muted">Сервер</summary>' + srv + '</details>' : srv)
+      + (cfg ? '' : srv)
       + (reg ? '<div class="field"><label for="a-name">' + (P.role === 'parent' ? 'Ваше имя' : 'Как вас зовут') + '</label><input id="a-name" type="text" maxlength="60" autocomplete="name"></div>' : '')
       + '<div class="field"><label for="a-login">Логин</label><input id="a-login" type="text" maxlength="32" autocomplete="username" autocapitalize="off" value="' + esc(P.prefLogin || '') + '"></div>'
       + '<div class="field"><label for="a-pass">Пароль</label><input id="a-pass" type="password" maxlength="128" autocomplete="' + (reg ? 'new-password' : 'current-password') + '"></div>'

@@ -1,3 +1,2 @@
-// Адрес вашего сервера. Если вписать, ученикам не придётся его вводить при входе.
-// Пример: export const SERVER = 'https://board.example.com';
-export const SERVER = '';
+// Адрес сервера. Он вписан сразу, поэтому при входе его вводить не нужно.
+export const SERVER = 'https://tutorly.bosko.dev';
