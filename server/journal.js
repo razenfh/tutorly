@@ -12,7 +12,8 @@ const MAX_REC = 20000, MAX_REC_BYTES = 20000;
 const REQ_STATUS = new Set(['pending', 'accepted', 'declined']);
 const MAX_PENDING = 10;
 const LESSON_STATUS = new Set(['planned', 'done', 'cancelled']);
-const HW_STATUS = new Set(['given', 'submitted', 'checked']);
+const HW_STATUS = new Set(['given', 'submitted', 'checked', 'returned']);
+const ROOM_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
 const dateStr = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
@@ -53,6 +54,8 @@ function createJournal(dir) {
 
   function applyRec(k, r) {
     const key = k + '/' + r.id, cur = st.items[k][r.id], t = st.tomb[key];
+    /* доску задания создаёт сервер; учитель, не успевший получить её, не должен её затереть своей правкой */
+    if (k === 'homework' && cur && cur.r.room && !(r.room && typeof r.room === 'object')) r = Object.assign({}, r, { room: cur.r.room });
     if (t && r.u <= t.u) return false;
     if (cur) {
       if (r.u < cur.r.u) return false;
@@ -103,7 +106,20 @@ function createJournal(dir) {
     }
     return vkIndex.get(vk) || null;
   }
-  const hwOut = (h) => ({ id: h.id, text: str(h.text, 5000), due: dateStr(h.due), status: HW_STATUS.has(h.status) ? h.status : 'given', created: nn(h.created) });
+  const hwOut = (h) => {
+    const o = { id: h.id, text: str(h.text, 5000), due: dateStr(h.due), status: HW_STATUS.has(h.status) ? h.status : 'given', created: nn(h.created), comment: str(h.comment, 1000), sub: nn(h.sub) };
+    if (h.room && typeof h.room.id === 'string' && typeof h.room.sk === 'string' && ROOM_ID_RE.test(h.room.id) && ROOM_ID_RE.test(h.room.sk)) o.room = { id: h.room.id, sk: h.room.sk };
+    return o;
+  };
+  const hwRec = (id) => (typeof id === 'string' && ID_RE.test(id) && st.items.homework[id] ? st.items.homework[id].r : null);
+  /* сервер сам создаёт доску задания и записывает её в задание */
+  function setHwRoom(id, room) {
+    const x = st.items.homework[id];
+    if (!x) return false;
+    st.items.homework[id] = { r: Object.assign({}, x.r, { room: room, u: Math.max(Date.now(), nn(x.r.u) + 1) }), rv: ++st.rev };
+    persist();
+    return true;
+  }
 
   const reqOut = (q) => ({
     id: q.id, lessonId: str(q.lessonId, 40), date: dateStr(q.date), time: timeStr(q.time), reason: str(q.reason, 300),
@@ -169,15 +185,18 @@ function createJournal(dir) {
     if (!s || typeof hwId !== 'string' || !ID_RE.test(hwId) || (status !== 'submitted' && status !== 'given')) return null;
     const x = st.items.homework[hwId];
     if (!x || x.r.studentId !== s.id || x.r.status === 'checked') return null;
-    if (x.r.status !== status) {
-      const r = Object.assign({}, x.r, { status: status, u: Math.max(Date.now(), nn(x.r.u) + 1) });
-      st.items.homework[hwId] = { r: r, rv: ++st.rev };
+    /* вернули на доработку: «отменить сдачу» не возвращает задание в «Задано», пока ученик не пересдал */
+    const target = status === 'given' && x.r.status === 'returned' ? 'returned' : status;
+    if (x.r.status !== target) {
+      const patch = { status: target, u: Math.max(Date.now(), nn(x.r.u) + 1) };
+      if (target === 'submitted') patch.sub = Date.now();
+      st.items.homework[hwId] = { r: Object.assign({}, x.r, patch), rv: ++st.rev };
       persist();
     }
     return hwOut(st.items.homework[hwId].r);
   }
 
-  return { sync: sync, viewFor: viewFor, markHw: markHw, students: students, studentRec: studentRec, viewOf: viewOf, markHwOf: markHwOf, addRequestOf: addRequestOf, flush: () => { if (timer) { clearTimeout(timer); timer = null; } save(); }, _st: () => st };
+  return { sync: sync, studentByKey: studentByKey, hwRec: hwRec, setHwRoom: setHwRoom, viewFor: viewFor, markHw: markHw, students: students, studentRec: studentRec, viewOf: viewOf, markHwOf: markHwOf, addRequestOf: addRequestOf, flush: () => { if (timer) { clearTimeout(timer); timer = null; } save(); }, _st: () => st };
 }
 
 module.exports = { createJournal: createJournal };

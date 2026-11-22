@@ -343,16 +343,17 @@ function viewHomework(){
   const H=hwArr().sort((a,b)=>num(b.created)-num(a.created));
   const item=h=>{
     let btns='';
-    if(h.status==='given') btns+='<button class="btn small primary" data-a="hwNext" data-id="'+h.id+'">'+svg(P.check)+'Сдано</button>';
-    if(h.status==='submitted') btns+='<button class="btn small primary" data-a="hwNext" data-id="'+h.id+'">'+svg(P.check)+'Проверено</button>';
-    if(h.status==='checked') btns+='<button class="btn small" data-a="hwBack" data-id="'+h.id+'">Вернуть в работу</button>';
+    if(h.status==='submitted') btns+='<button class="btn small primary" data-a="hwBoard" data-id="'+h.id+'">Проверить на доске</button><button class="btn small" data-a="hwAccept" data-id="'+h.id+'">'+svg(P.check)+'Принять</button><button class="btn small" data-a="hwReturn" data-id="'+h.id+'">На доработку</button>';
+    if(h.status==='given'||h.status==='returned') btns+='<button class="btn small" data-a="hwBoard" data-id="'+h.id+'">Доска</button><button class="btn small" data-a="hwNext" data-id="'+h.id+'">'+svg(P.check)+'Сдано</button>';
+    if(h.status==='checked') btns+=(h.room?'<button class="btn small" data-a="hwBoard" data-id="'+h.id+'">Доска</button>':'')+'<button class="btn small" data-a="hwBack" data-id="'+h.id+'">Вернуть в работу</button>';
     btns+='<button class="btn small" data-a="hwCopy" data-id="'+h.id+'">'+svg(P.copy)+'Скопировать</button>';
-    return '<article class="card item" data-a="editHw" data-id="'+h.id+'"><div class="item-h"><div class="t"><button data-a="editHw" data-id="'+h.id+'">'+esc(stuName(h.studentId))+'</button>'+dueChip(h)+'</div></div><p class="hw-text">'+esc(h.text)+'</p><div class="btn-row">'+btns+'</div></article>';
+    return '<article class="card item" data-a="editHw" data-id="'+h.id+'"><div class="item-h"><div class="t"><button data-a="editHw" data-id="'+h.id+'">'+esc(stuName(h.studentId))+'</button>'+dueChip(h)+'</div></div><p class="hw-text">'+esc(h.text)+'</p>'+(h.comment?'<p class="muted">Комментарий: '+esc(h.comment)+'</p>':'')+'<div class="btn-row">'+btns+'</div></article>';
   };
-  const g=H.filter(h=>h.status==='given'), sb=H.filter(h=>h.status==='submitted'), ck=H.filter(h=>h.status==='checked').slice(0,8);
+  const g=H.filter(h=>h.status==='given'), rt=H.filter(h=>h.status==='returned'), sb=H.filter(h=>h.status==='submitted'), ck=H.filter(h=>h.status==='checked').slice(0,8);
   let h='<div class="btn-row" style="margin-bottom:16px"><button class="btn primary" data-a="addHw">'+svg(P.plus)+'Задать домашнее задание</button></div>';
   if(!H.length) return h+'<div class="card item"><p class="muted">Заданий пока нет. Задайте первое, затем скопируйте текст и отправьте ученику в мессенджер.</p></div>';
   if(sb.length) h+='<div class="sec"><span>Сдано, нужно проверить</span><span>'+sb.length+'</span></div>'+sb.map(item).join('');
+  if(rt.length) h+='<div class="sec"><span>На доработке</span><span>'+rt.length+'</span></div>'+rt.map(item).join('');
   if(g.length) h+='<div class="sec"><span>Ждёт выполнения</span><span>'+g.length+'</span></div>'+g.map(item).join('');
   if(ck.length) h+='<div class="sec"><span>Проверено</span><span>'+ck.length+'</span></div>'+ck.map(item).join('');
   return h;
@@ -675,16 +676,36 @@ function openHw(id,pre){
    +'<div class="field"><label for="h-text">Задание</label><textarea id="h-text" rows="6" placeholder="Что решить, прочитать, повторить">'+esc(h.text)+'</textarea></div>'
    +'<div class="chips" aria-label="Быстрые вставки"><button type="button" class="chip" data-a="hwChip" data-t="Задачи № ">№ задач</button><button type="button" class="chip" data-a="hwChip" data-t="Повторить тему: ">Повторить тему</button><button type="button" class="chip" data-a="hwChip" data-t="Учебник, § ">Учебник, §</button><button type="button" class="chip" data-a="hwChip" data-t="Решить вариант № ">Вариант</button></div>'
    +'<div class="field"><label for="h-due">Срок</label><input id="h-due" type="date" value="'+esc(h.due)+'"></div>'
-   +(id?'<div class="field"><span class="lbl">Статус</span><div class="seg" role="radiogroup" aria-label="Статус задания">'+seg('h-status',[['given','Задано'],['submitted','Сдано'],['checked','Проверено']],h.status)+'</div></div>':'')
+   +(id?'<div class="field"><span class="lbl">Статус</span><div class="seg" role="radiogroup" aria-label="Статус задания">'+seg('h-status',[['given','Задано'],['submitted','Сдано'],['returned','На доработке'],['checked','Проверено']],h.status)+'</div></div><div class="field"><label for="h-comment">Комментарий для ученика</label><textarea id="h-comment" rows="2" maxlength="1000" placeholder="Что исправить или что получилось хорошо">'+esc(h.comment||'')+'</textarea></div>':'')
    +'<p class="err" id="sheetErr" role="alert" hidden></p>';
-  const extra='<button class="btn" data-a="copyFromSheet">'+svg(P.copy)+'Скопировать</button>'+(id?'<button class="btn danger" data-a="delHw" data-id="'+id+'">Удалить</button>':'');
+  const extra='<button class="btn" data-a="copyFromSheet">'+svg(P.copy)+'Скопировать</button>'+(id?'<button class="btn" data-a="hwBoard" data-id="'+id+'">Доска с работой</button><button class="btn danger" data-a="delHw" data-id="'+id+'">Удалить</button>':'');
   openSheet({title:id?'Домашнее задание':'Новое задание',body:body,extra:extra,save:()=>{
     const sid=val('h-student'), text=val('h-text').trim();
     if(!sid) return showErr('Выберите ученика.')||false;
     if(!text) return showErr('Напишите задание.')||false;
-    put('homework',Object.assign({},h,{id:id||uid(),studentId:sid,text:text,due:val('h-due'),status:id?(radio('h-status')||'given'):'given',created:h.created||Date.now()}));
+    put('homework',Object.assign({},h,{id:id||uid(),studentId:sid,text:text,due:val('h-due'),status:id?(radio('h-status')||'given'):'given',comment:id?val('h-comment').trim():(h.comment||''),created:h.created||Date.now()}));
     view.tab='homework';
   }});
+}
+
+/* доска домашнего задания: ученик решает на ней, учитель проверяет красным и принимает или возвращает */
+async function openHwBoard(id){
+  const h=S.homework[id], srv=syncCfg();
+  if(!h) return;
+  if(!srv){toast('Войдите в аккаунт учителя в настройках: доска задания хранится на сервере.');return}
+  let room;
+  try{
+    const r=await fetch(srv.url+'/api/homework/'+encodeURIComponent(id)+'/board',{method:'POST',headers:{Authorization:'Bearer '+srv.token,'Content-Type':'application/json'},body:'{}'});
+    if(r.status===401){clearToken();throw new Error('Сессия закончилась. Войдите снова.')}
+    if(r.status===404){throw new Error('Задание ещё не дошло до сервера. Подождите минуту и повторите.')}
+    if(!r.ok) throw new Error('Сервер ответил с ошибкой '+r.status+'.');
+    room=await r.json();
+  }catch(e){toast(e&&e.message?e.message:'Сервер недоступен');return}
+  closeSheet(); stopLive();
+  const finish=(status,msg)=>{const c=S.homework[id];if(c)put('homework',Object.assign({},c,{status:status}));window.Board.close();toast(msg)};
+  window.Board.open({id:'h_'+id,title:stuName(h.studentId)+' · домашка',onShare:null,onClose:()=>stopLive(),
+    actions:h.status==='checked'?null:[{title:'На доработку',onClick:()=>finish('returned','Возвращено ученику')},{title:'Принять',onClick:()=>finish('checked','Принято')}]});
+  liveH=window.Live.start({server:srv.url,room:room.id,key:room.tk,board:window.Board});
 }
 
 /* совместная доска */
@@ -833,8 +854,11 @@ const A={
   demoClear:()=>{clearDemo();closeSheet();toast('Примеры удалены')},
   addHw:()=>openHw(),
   editHw:(d)=>openHw(d.id),
-  hwNext:(d)=>{const h=S.homework[d.id];if(h)put('homework',Object.assign({},h,{status:h.status==='given'?'submitted':'checked'}))},
-  hwBack:(d)=>{const h=S.homework[d.id];if(h)put('homework',Object.assign({},h,{status:'given'}))},
+  hwNext:(d)=>{const h=S.homework[d.id];if(h)put('homework',Object.assign({},h,{status:'submitted'}))},
+  hwAccept:(d)=>{const h=S.homework[d.id];if(h)put('homework',Object.assign({},h,{status:'checked'}))},
+  hwReturn:(d)=>{const h=S.homework[d.id];if(h)put('homework',Object.assign({},h,{status:'returned'}))},
+  hwBack:(d)=>{const h=S.homework[d.id];if(h)put('homework',Object.assign({},h,{status:'returned'}))},
+  hwBoard:(d)=>openHwBoard(d.id),
   hwCopy:(d)=>{const h=S.homework[d.id];if(h)copyText(hwMessage(h))},
   hwChip:(d)=>{const t=$('#h-text');if(!t)return;t.value=(t.value&&!/\n$/.test(t.value)?t.value+'\n':t.value)+d.t;t.focus();t.setSelectionRange(t.value.length,t.value.length)},
   hwFromLesson:(d)=>{

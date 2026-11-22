@@ -13,7 +13,7 @@
 ```
 npx create-expo-app@latest tutorly-mobile --template blank
 cd tutorly-mobile
-npx expo install react-native-webview expo-secure-store expo-crypto
+npx expo install react-native-webview expo-secure-store expo-crypto expo-notifications
 ```
 
 Затем скопируйте из этой папки в `tutorly-mobile` с заменой: `App.js`, папку `src`, `app.json`. Запуск:

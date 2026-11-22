@@ -114,7 +114,7 @@ function boardBtn(c, l) {
 }
 function upcoming(c) { const now = new Date(); return c.lessons.filter((l) => l.status === 'planned' && lessonEnd(l) >= now).sort(byStart); }
 function renderCard(c) {
-  const up = upcoming(c)[0], open = c.homework.filter((h) => h.status === 'given').length;
+  const up = upcoming(c)[0], open = c.homework.filter((h) => h.status === 'given' || h.status === 'returned').length;
   const sub = c.as === 'parent' ? 'Ребёнок: ' + esc(c.student.name) : esc(c.teacher.name || 'Учитель');
   return '<button class="p-course" data-p="course" data-cid="' + esc(c.cid) + '"><span class="p-course-top"><b>' + esc(c.title) + '</b><span>' + sub + (c.as === 'parent' ? ' · ' + esc(c.teacher.name) : '') + '</span></span>'
     + '<span class="p-course-body"><span>' + (up ? 'Ближайший урок: <b>' + esc(dayTime(up.date, up.time)) + '</b>' : 'Уроков в расписании нет') + '</span>'
@@ -142,8 +142,11 @@ function renderCourse(c) {
     + (l.movedFrom ? '<div class="muted">Перенесён с ' + esc(dayTime(l.movedFrom, l.movedFromTime)) + '</div>' : '') + chipPay(l) + boardBtn(c, l)
     + (pendingFor(c, l.id) ? '<div class="muted">Запрос на перенос отправлен</div>' : '<button class="btn small" data-p="req" data-cid="' + esc(c.cid) + '" data-lid="' + esc(l.id) + '">Попросить перенести</button>') + '</div></li>';
   const mv = (l) => '<li class="p-mv"><div class="p-d">' + esc(dayTime(l.date, l.time)) + '</div><div>' + (l.movedTo ? 'Перенесён на <b>' + esc(dayTime(l.movedTo, l.movedToTime)) + '</b>' : 'Урок отменён') + '</div>' + (l.reason ? '<div class="p-reason">Причина: ' + esc(l.reason) + '</div>' : '') + '</li>';
-  const hw = (h) => '<li class="p-hw"><div class="muted">' + (h.due ? 'Срок: <b>' + esc(fmtDM(parseYmd(h.due))) + '</b>' : 'Без срока') + (h.status === 'submitted' ? ' · сдано, учитель проверяет' : '') + '</div><div class="p-txt">' + esc(h.text) + '</div>'
-    + (canMark ? '<button class="btn small' + (h.status === 'submitted' ? '' : ' primary') + '" data-p="hw" data-cid="' + esc(c.cid) + '" data-id="' + esc(h.id) + '" data-st="' + (h.status === 'submitted' ? 'given' : 'submitted') + '">' + (h.status === 'submitted' ? 'Снять отметку «сдано»' : 'Я сдал(а)') + '</button>' : '') + '</li>';
+  const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  const cmt = (h) => (h.comment ? '<div class="p-reason">Комментарий учителя: ' + esc(h.comment) + '</div>' : '');
+  const hw = (h) => '<li class="p-hw"><div class="muted">' + (h.due ? 'Срок: <b>' + esc(fmtDM(parseYmd(h.due))) + '</b>' : 'Без срока') + (h.status === 'submitted' ? ' · сдано, учитель проверяет' : h.status === 'returned' ? ' · нужно доработать' : h.due && h.due < today ? ' · срок прошёл' : '') + '</div><div class="p-txt">' + esc(h.text) + '</div>' + cmt(h)
+    + (canMark ? '<div class="btn-row"><button class="btn small' + (h.status === 'submitted' ? '' : ' primary') + '" data-p="hwBoard" data-cid="' + esc(c.cid) + '" data-id="' + esc(h.id) + '">' + (h.status === 'submitted' ? 'Открыть работу' : 'Решать на доске') + '</button>'
+      + '<button class="btn small" data-p="hw" data-cid="' + esc(c.cid) + '" data-id="' + esc(h.id) + '" data-st="' + (h.status === 'submitted' ? 'given' : 'submitted') + '">' + (h.status === 'submitted' ? 'Снять отметку «сдано»' : h.status === 'returned' ? 'Сдать снова' : 'Я сдал(а)') + '</button></div>' : '') + '</li>';
   return '<div class="p-wrap"><div class="p-bar"><button class="btn small" data-p="back">← Мои курсы</button><span class="p-spacer"></span><button class="btn small" data-p="refresh">Обновить</button>' + themeBtn() + '</div>'
     + '<div class="p-band"><h2>' + esc(c.title) + '</h2><p>' + esc(c.as === 'parent' ? 'Ребёнок: ' + c.student.name : c.student.name) + ' · учитель ' + esc(c.teacher.name) + '</p></div>'
     + (c.as === 'parent' ? '<p class="muted p-note">Вы вошли как родитель: можно смотреть расписание, переносы и домашку.</p>' : '')
@@ -151,7 +154,7 @@ function renderCourse(c) {
     + section('Переносы и отмены', moved.map(mv), '')
     + section('Ваши запросы на перенос', reqs, '')
     + section('Домашнее задание', open.map(hw), 'Сейчас заданий нет.')
-    + section('Проверено', done.map((h) => '<li class="p-hw"><div class="p-txt">' + esc(h.text) + '</div></li>'), '')
+    + section('Проверено', done.map((h) => '<li class="p-hw"><div class="p-txt">' + esc(h.text) + '</div>' + cmt(h) + (canMark && h.room ? '<button class="btn small" data-p="hwBoard" data-cid="' + esc(c.cid) + '" data-id="' + esc(h.id) + '">Посмотреть проверку</button>' : '') + '</li>'), '')
     + section('Недавние уроки', past.map((l) => '<li class="p-les"><div class="p-when"><b>' + esc(fmtShort(l.date)) + '</b></div><div><div>' + esc(l.topic || 'Урок') + '</div>' + chipPay(l) + boardBtn(c, l) + '</div></li>'), '')
     + section('Доски прошлых уроков', boards.map(boardItem), '')
     + '<p class="p-foot"><button class="btn small danger" data-p="leave" data-cid="' + esc(c.cid) + '">Покинуть курс</button></p></div>';
@@ -304,6 +307,30 @@ async function openBoard(cid, lid) {
   await window.Board.open({ id: l.room.id, title: c.title + ' · ' + dayTime(l.date, l.time), onClose: () => { if (liveH) { liveH.stop(); liveH = null; } } });
   liveH = window.Live.start({ server: a.server, room: l.room.id, key: l.room.sk, board: window.Board });
 }
+async function openHwBoard(cid, id, btn) {
+  const c = P.courses.find((x) => x.cid === cid), h = c && c.homework.find((x) => x.id === id), a = B().getAcct();
+  if (!h || !window.Board || !window.Live) return;
+  btn.disabled = true;
+  let room;
+  try { room = await api('POST', '/api/my/courses/' + cid + '/hw/' + encodeURIComponent(id) + '/board', {}); }
+  catch (e) { btn.disabled = false; if (e.code !== 'expired') toast(e.message); return; }
+  btn.disabled = false;
+  if (liveH) { liveH.stop(); liveH = null; }
+  const canSubmit = c.as === 'student' && (h.status === 'given' || h.status === 'returned');
+  let armed = false;
+  const submit = async () => {
+    const b = document.getElementById('bAct0');
+    if (!armed) { armed = true; if (b) b.textContent = 'Точно сдать?'; setTimeout(() => { armed = false; if (b) b.textContent = 'Сдать работу'; }, 3500); return; }
+    try {
+      const nh = await api('POST', '/api/my/courses/' + cid + '/hw/' + encodeURIComponent(id), { status: 'submitted' });
+      c.homework = c.homework.map((x) => (x.id === nh.id ? nh : x));
+      window.Board.close(); keepRender(); toast('Работа сдана');
+    } catch (e) { if (e.code !== 'expired') toast(e.message); }
+  };
+  await window.Board.open({ id: room.id, title: 'Домашка · ' + String(h.text).split('\n')[0].slice(0, 40), onClose: () => { if (liveH) { liveH.stop(); liveH = null; } },
+    actions: canSubmit ? [{ title: 'Сдать работу', onClick: submit }] : null });
+  liveH = window.Live.start({ server: a.server, room: room.id, key: room.sk, board: window.Board });
+}
 async function setHw(cid, id, st, btn) {
   btn.disabled = true;
   try {
@@ -334,6 +361,7 @@ const A = {
   refresh: () => { loadCourses(false); },
   board: (d) => openBoard(d.cid, d.lid),
   hw: (d, el) => setHw(d.cid, d.id, d.st, el),
+  hwBoard: (d, el) => openHwBoard(d.cid, d.id, el),
   leave: (d, el) => arm(el, 'Точно покинуть курс?', async () => {
     try { await api('DELETE', '/api/my/courses/' + d.cid); P.view = 'home'; await loadCourses(true); render(); toast('Вы покинули курс'); } catch (e) { if (e.code !== 'expired') toast(e.message); }
   }),

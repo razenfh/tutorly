@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
+    "plugins": ["expo-notifications"],
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.example.tutorly" },
     "android": { "package": "com.example.tutorly" }
   }

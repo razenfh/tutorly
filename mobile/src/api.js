@@ -40,6 +40,8 @@ export function createApi(env) {
     async courses() { return (await call('GET', '/api/my/courses')).courses || []; },
     async join(code) { return (await call('POST', '/api/join', { code: code })).course; },
     leave: (cid) => call('DELETE', '/api/my/courses/' + cid),
+    hwBoard: (cid, id) => call('POST', '/api/my/courses/' + cid + '/hw/' + id + '/board', {}),
+    teacherHwBoard: (id) => call('POST', '/api/homework/' + id + '/board', {}),
     setHw: (cid, id, status) => call('POST', '/api/my/courses/' + cid + '/hw/' + id, { status: status }),
     call: call,
     sync: (since, changes) => call('POST', '/api/sync', { since: since, changes: changes }),

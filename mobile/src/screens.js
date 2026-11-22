@@ -4,6 +4,7 @@ import { WebView } from 'react-native-webview';
 import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, row, useTheme, ThemePick } from './ui';
 import { dayTime, fmtDM, parseYmd, fmtShort, endTime, byStart, lessonEnd, upcoming, normTime, nextDays, dayChip } from './util';
 import { SERVER } from './config';
+import { NotifyPick } from './NotifyPick';
 
 export function Welcome({ onRole }) {
   const t = useTheme();
@@ -94,6 +95,7 @@ export function Home({ acct, courses, loaded, refreshing, onRefresh, onOpen, api
       {!loaded ? <ActivityIndicator /> : null}
       {courses.map((c) => <CourseCard key={c.cid} c={c} onPress={() => onOpen(c.cid)} />)}
       {loaded && !courses.length ? <T muted>Пока нет ни одного курса. Введите код, который дал учитель.</T> : null}
+      <NotifyPick />
       <ThemePick />
     </Screen>
   );
@@ -101,7 +103,7 @@ export function Home({ acct, courses, loaded, refreshing, onRefresh, onOpen, api
 
 function CourseCard({ c, onPress }) {
   const t = useTheme();
-  const up = upcoming(c)[0], open = c.homework.filter((h) => h.status === 'given').length;
+  const up = upcoming(c)[0], open = c.homework.filter((h) => h.status === 'given' || h.status === 'returned').length;
   return (
     <Card onPress={onPress} style={{ padding: 0, overflow: 'hidden', gap: 0 }}>
       <View style={{ backgroundColor: t.soft, borderBottomWidth: 1, borderBottomColor: t.line, padding: 14, minHeight: 84, justifyContent: 'flex-end' }}>
@@ -117,7 +119,7 @@ function CourseCard({ c, onPress }) {
 }
 
 const REQ_TXT = { pending: 'ждёт ответа', accepted: 'учитель перенёс урок', declined: 'учитель отказал' };
-export function Course({ c, refreshing, onRefresh, onBack, onBoard, onRequest, api, onChanged, onLeft }) {
+export function Course({ c, refreshing, onRefresh, onBack, onBoard, onHwBoard, onRequest, api, onChanged, onLeft }) {
   const t = useTheme();
   const pendingFor = (lid) => (c.requests || []).some((q) => q.lessonId === lid && q.status === 'pending');
   const from = new Date(Date.now() - 30 * 86400000); const fromStr = from.toISOString().slice(0, 10);
@@ -133,6 +135,11 @@ export function Course({ c, refreshing, onRefresh, onBack, onBoard, onRequest, a
     setBusyId(h.id);
     try { await api.setHw(c.cid, h.id, h.status === 'submitted' ? 'given' : 'submitted'); await onChanged(); } catch (e) { if (e.code !== 'expired') Alert.alert('Не получилось', e.message); } finally { setBusyId(''); }
   }
+  async function openHw(h) {
+    setBusyId(h.id);
+    try { const r = await api.hwBoard(c.cid, h.id); onHwBoard(h, r); } catch (e) { if (e.code !== 'expired') Alert.alert('Не получилось', e.message); } finally { setBusyId(''); }
+  }
+  const today = new Date().toISOString().slice(0, 10);
   function leave() {
     Alert.alert('Покинуть курс?', 'Чтобы вернуться, понадобится код курса.', [
       { text: 'Отмена', style: 'cancel' },
@@ -178,12 +185,22 @@ export function Course({ c, refreshing, onRefresh, onBack, onBoard, onRequest, a
       <H3>Домашнее задание</H3>
       {open.length ? open.map((h) => (
         <Card key={h.id}>
-          <T muted size={13}>{(h.due ? 'Срок: ' + fmtDM(parseYmd(h.due)) : 'Без срока') + (h.status === 'submitted' ? ' · сдано, учитель проверяет' : '')}</T>
+          <T muted size={13}>{(h.due ? 'Срок: ' + fmtDM(parseYmd(h.due)) : 'Без срока') + (h.status === 'submitted' ? ' · сдано, учитель проверяет' : h.status === 'returned' ? ' · нужно доработать' : h.due && h.due < today ? ' · срок прошёл' : '')}</T>
           <T>{h.text}</T>
-          {canMark ? <Btn small kind={h.status === 'submitted' ? undefined : 'primary'} disabled={busyId === h.id} title={h.status === 'submitted' ? 'Снять отметку «сдано»' : 'Я сдал(а)'} onPress={() => mark(h)} /> : null}
+          {h.comment ? <T color={t.red}>{'Комментарий учителя: ' + h.comment}</T> : null}
+          {canMark ? <View style={row}>
+            <Btn small kind={h.status === 'submitted' ? undefined : 'primary'} disabled={busyId === h.id} title={h.status === 'submitted' ? 'Открыть работу' : 'Решать на доске'} onPress={() => openHw(h)} />
+            <Btn small disabled={busyId === h.id} title={h.status === 'submitted' ? 'Снять отметку «сдано»' : h.status === 'returned' ? 'Сдать снова' : 'Я сдал(а)'} onPress={() => mark(h)} />
+          </View> : null}
         </Card>
       )) : <T muted>Сейчас заданий нет.</T>}
-      <Sec title="Проверено" items={done.map((h) => <Card key={h.id}><T>{h.text}</T></Card>)} />
+      <Sec title="Проверено" items={done.map((h) => (
+        <Card key={h.id}>
+          <T>{h.text}</T>
+          {h.comment ? <T muted>{'Комментарий учителя: ' + h.comment}</T> : null}
+          {canMark && h.room ? <Btn small disabled={busyId === h.id} title="Посмотреть проверку" onPress={() => openHw(h)} /> : null}
+        </Card>
+      ))} />
       <Sec title="Недавние уроки" items={past.map((l) => (
         <Card key={l.id}><T bold>{fmtShort(l.date) + ' · ' + (l.topic || 'Урок')}</T></Card>
       ))} />
@@ -244,7 +261,7 @@ export function Password({ api, onBack }) {
   );
 }
 
-export function Board({ server, lesson, title, onBack }) {
+export function Board({ server, lesson, title, onBack, actions }) {
   const t = useTheme();
   const origin = new URL(server).origin;
   const uri = server + '/r/' + lesson.room.id + '?k=' + lesson.room.sk;
@@ -252,7 +269,8 @@ export function Board({ server, lesson, title, onBack }) {
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ paddingTop: 44, paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Btn small title="← Назад" onPress={onBack} />
-        <T bold style={{ flex: 1 }}>{title}</T>
+        <T bold style={{ flex: 1 }} numberOfLines={1}>{title}</T>
+        {(actions || []).map((a) => <Btn key={a.title} small kind={a.kind} title={a.title} onPress={a.onPress} />)}
       </View>
       <WebView source={{ uri: uri }} style={{ flex: 1 }} bounces={false} overScrollMode="never" setSupportMultipleWindows={false}
         originWhitelist={[origin]} onShouldStartLoadWithRequest={(r) => r.url.indexOf(origin) === 0 || r.url.indexOf('about:') === 0}

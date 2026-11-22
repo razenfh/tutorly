@@ -6,6 +6,7 @@ import { applyTheme } from './src/ui';
 import TeacherApp from './src/teacher';
 import { Welcome, Auth, Home, Course, RequestMove, Password, Board } from './src/screens';
 import { dayTime } from './src/util';
+import { initNotifications, syncNotifications, clearNotifications } from './src/notify';
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -41,6 +42,8 @@ export default function App() {
   }, [api]);
 
   useEffect(() => { if (acct && acct.role !== 'teacher') load(false); }, [acct, load]);
+  useEffect(() => { initNotifications(); }, []);
+  useEffect(() => { if (acct && acct.role !== 'teacher' && loaded) syncNotifications({ role: acct.role, courses: courses }); }, [acct, loaded, courses]);
   useEffect(() => {
     const iv = setInterval(() => { if (AppState.currentState === 'active') load(false); }, 60000);
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') load(false); });
@@ -56,7 +59,7 @@ export default function App() {
   }, [stack.length, pop]);
 
   async function logout() {
-    await api.logout(); await setAcct(null); setCourses([]); setLoaded(false); reset({ n: 'welcome' });
+    await clearNotifications(); await api.logout(); await setAcct(null); setCourses([]); setLoaded(false); reset({ n: 'welcome' });
   }
 
   if (!ready) return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>;
@@ -74,8 +77,17 @@ export default function App() {
   const c = course(s.cid);
   if (!c) { if (loaded) setTimeout(() => reset({ n: 'home' }), 0); return <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator /></View>; }
   if (s.n === 'board') return <Board server={acct.server} lesson={s.lesson} title={c.title + ' · ' + dayTime(s.lesson.date, s.lesson.time)} onBack={pop} />;
+  if (s.n === 'hwboard') {
+    const h = c.homework.find((x) => x.id === s.hw.id) || s.hw;
+    const canSubmit = c.as === 'student' && (h.status === 'given' || h.status === 'returned');
+    const submit = () => Alert.alert('Сдать работу?', 'После сдачи доска станет только для просмотра, пока учитель не проверит работу.', [
+      { text: 'Отмена', style: 'cancel' },
+      { text: 'Сдать', onPress: async () => { try { await api.setHw(c.cid, h.id, 'submitted'); await load(false); pop(); } catch (e) { if (e.code !== 'expired') Alert.alert('Не получилось', e.message); } } },
+    ]);
+    return <Board server={acct.server} lesson={{ room: s.room }} title={'Домашка · ' + (h.text || '').split('\n')[0].slice(0, 40)} onBack={pop} actions={canSubmit ? [{ title: 'Сдать', kind: 'primary', onPress: submit }] : null} />;
+  }
   if (s.n === 'request') return <RequestMove c={c} lesson={s.lesson} api={api} onBack={pop} onSent={async () => { await load(false); pop(); }} />;
   return <Course c={c} api={api} refreshing={refreshing} onRefresh={() => load(true)} onBack={pop}
-    onBoard={(l) => push({ n: 'board', cid: c.cid, lesson: l })} onRequest={(l) => push({ n: 'request', cid: c.cid, lesson: l })}
+    onBoard={(l) => push({ n: 'board', cid: c.cid, lesson: l })} onHwBoard={(h, r) => push({ n: 'hwboard', cid: c.cid, hw: h, room: r })} onRequest={(l) => push({ n: 'request', cid: c.cid, lesson: l })}
     onChanged={() => load(false)} onLeft={async () => { await load(false); reset({ n: 'home' }); }} />;
 }

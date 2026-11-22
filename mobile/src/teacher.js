@@ -4,6 +4,8 @@ import { createJournal } from './journal';
 import { bytes, newCode, newKey, showCode } from './rand';
 import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, Pick, Check, row, useTheme, ThemePick } from './ui';
 import { Board } from './screens';
+import { NotifyPick } from './NotifyPick';
+import { initNotifications, syncNotifications } from './notify';
 import { ymd, parseYmd, dayTime, fmtShort, fmtDM, byStart, lessonStart, lessonEnd, endTime, nextDays, dayChip, normTime } from './util';
 
 const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
@@ -22,6 +24,13 @@ export default function TeacherApp({ acct, api, onLogout, onPassword }) {
   const S = J.S;
 
   useEffect(() => J.subscribe(force), [J]);
+  useEffect(() => { initNotifications(); }, []);
+  /* пересчитываем напоминания после каждого обновления данных (с паузой, чтобы не дёргать телефон) */
+  useEffect(() => {
+    if (!J.st || !J.st.loaded) return undefined;
+    const tm = setTimeout(() => syncNotifications({ role: 'teacher', S: S }), 1500);
+    return () => clearTimeout(tm);
+  });
   useEffect(() => {
     J.refresh();
     const iv = setInterval(() => { if (AppState.currentState === 'active') J.refresh(); }, 60000);
@@ -58,6 +67,7 @@ export default function TeacherApp({ acct, api, onLogout, onPassword }) {
       case 'course': return <CourseScreen {...p} />;
       case 'hw': return <HwForm {...p} />;
       case 'board': return <TeacherBoard {...p} />;
+      case 'hwboard': return <TeacherHwBoard {...p} />;
       case 'settings': return <Settings {...p} onLogout={onLogout} onPassword={onPassword} />;
       default: return null;
     }
@@ -424,16 +434,25 @@ function Money({ ctx }) {
 function Homework({ ctx }) {
   const { J, S } = ctx;
   const all = Object.values(S.homework);
-  const sub = all.filter((h) => h.status === 'submitted'), given = all.filter((h) => h.status === 'given').sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+  const today = ymd(new Date());
+  const byDue = (a, b) => (a.due || '9999').localeCompare(b.due || '9999');
+  const sub = all.filter((h) => h.status === 'submitted').sort((a, b) => (a.sub || 0) - (b.sub || 0)), ret = all.filter((h) => h.status === 'returned').sort(byDue);
+  const given = all.filter((h) => h.status === 'given').sort(byDue);
   const done = all.filter((h) => h.status === 'checked').sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 10);
+  const setSt = (h, status) => ctx.act(J.put('homework', Object.assign({}, h, { status: status })));
   const card = (h) => (
     <Card key={h.id} onPress={() => ctx.push({ n: 'hw', id: h.id })}>
-      <T bold>{ctx.stuName(h.studentId) + (h.due ? ' · к ' + fmtShort(h.due) : '')}</T>
+      <T bold>{ctx.stuName(h.studentId) + (h.due ? ' · к ' + fmtShort(h.due) : '') + ((h.status === 'given' || h.status === 'returned') && h.due && h.due < today ? ' · просрочено' : '')}</T>
       <T numberOfLines={3}>{h.text}</T>
-      {h.status !== 'checked' ? <View style={row}>
-        <Btn small kind={h.status === 'submitted' ? 'primary' : undefined} title={h.status === 'given' ? 'Сдано' : 'Проверено'} onPress={() => ctx.act(J.put('homework', Object.assign({}, h, { status: h.status === 'given' ? 'submitted' : 'checked' })))} />
-        {h.status === 'submitted' ? <Btn small title="Вернуть" onPress={() => ctx.act(J.put('homework', Object.assign({}, h, { status: 'given' })))} /> : null}
-      </View> : null}
+      {h.comment ? <T muted size={13} numberOfLines={2}>{'Комментарий: ' + h.comment}</T> : null}
+      <View style={row}>
+        {h.status === 'submitted' ? <Btn small kind="primary" title="Проверить на доске" onPress={() => ctx.push({ n: 'hwboard', id: h.id })} /> : null}
+        {h.status === 'submitted' ? <Btn small title="Принять" onPress={() => setSt(h, 'checked')} /> : null}
+        {h.status === 'submitted' ? <Btn small title="На доработку" onPress={() => setSt(h, 'returned')} /> : null}
+        {h.status === 'given' || h.status === 'returned' ? <Btn small title="Доска" onPress={() => ctx.push({ n: 'hwboard', id: h.id })} /> : null}
+        {h.status === 'given' || h.status === 'returned' ? <Btn small title="Сдано" onPress={() => setSt(h, 'submitted')} /> : null}
+        {h.status === 'checked' && h.room ? <Btn small title="Доска" onPress={() => ctx.push({ n: 'hwboard', id: h.id })} /> : null}
+      </View>
     </Card>
   );
   const Sec = ({ title, list }) => (list.length ? <View style={{ gap: 8 }}><H3>{title}</H3>{list.map(card)}</View> : null);
@@ -443,6 +462,7 @@ function Homework({ ctx }) {
       <ErrBar ctx={ctx} />
       <Btn kind="primary" title="+ Новое задание" onPress={() => ctx.push({ n: 'hw', id: '' })} />
       <Sec title="Сдано, ждёт проверки" list={sub} />
+      <Sec title="На доработке" list={ret} />
       <Sec title="Задано" list={given} />
       <Sec title="Проверено" list={done} />
       {!all.length ? <T muted>Заданий пока нет.</T> : null}
@@ -459,12 +479,13 @@ function HwForm({ ctx, s }) {
   const [text, setText] = useState(cur ? cur.text : pre.text || '');
   const [due, setDue] = useState(cur ? cur.due || '' : '');
   const [status, setStatus] = useState(cur ? cur.status : 'given');
+  const [comment, setComment] = useState(cur ? cur.comment || '' : '');
   const [err, setErr] = useState('');
   async function save() {
     if (!sid) return setErr('Выберите ученика.');
     if (!text.trim()) return setErr('Напишите задание.');
     if (due && !okDate(due)) return setErr('Срок в формате 2026-12-31 или «Без срока».');
-    const o = Object.assign({ lessonId: pre.lessonId || '' }, cur || {}, { id: cur ? cur.id : J.uid(), studentId: sid, text: text.trim(), due: due, status: cur ? status : 'given', created: cur ? cur.created : Date.now() });
+    const o = Object.assign({ lessonId: pre.lessonId || '' }, cur || {}, { id: cur ? cur.id : J.uid(), studentId: sid, text: text.trim(), due: due, status: cur ? status : 'given', comment: comment.trim(), created: cur ? cur.created : Date.now() });
     if (await ctx.act(J.put('homework', o))) ctx.pop();
   }
   function remove() { Alert.alert('Удалить задание?', '', [{ text: 'Отмена', style: 'cancel' }, { text: 'Удалить', style: 'destructive', onPress: async () => { if (await ctx.act(J.del('homework', cur.id))) ctx.pop(); } }]); }
@@ -476,9 +497,11 @@ function HwForm({ ctx, s }) {
       <Field label="Задание" value={text} onChangeText={setText} multiline numberOfLines={6} maxLength={5000} placeholder="Что решить, прочитать, повторить" />
       <View style={row}>{['Задачи № ', 'Повторить тему: ', 'Учебник, § ', 'Решить вариант № '].map((x) => <Chip key={x} title={x.trim()} onPress={() => setText((text && !/\n$/.test(text) ? text + '\n' : text) + x)} />)}</View>
       <DatePick label="Срок" value={due} onChange={setDue} allowEmpty />
-      {cur ? <Pick label="Статус" options={[['given', 'Задано'], ['submitted', 'Сдано'], ['checked', 'Проверено']]} value={status} onChange={setStatus} /> : null}
+      {cur ? <Pick label="Статус" options={[['given', 'Задано'], ['submitted', 'Сдано'], ['returned', 'На доработке'], ['checked', 'Проверено']]} value={status} onChange={setStatus} /> : null}
+      {cur ? <Field label="Комментарий для ученика (по желанию)" value={comment} onChangeText={setComment} multiline numberOfLines={3} maxLength={1000} placeholder="Что исправить или что получилось хорошо" /> : null}
       <Err>{err}</Err>
       <Btn kind="primary" title="Сохранить" onPress={save} />
+      {cur ? <Btn title="Открыть доску с работой" onPress={() => ctx.push({ n: 'hwboard', id: cur.id })} /> : null}
       <Btn title="Поделиться заданием" onPress={() => Share.share({ message: 'Домашнее задание' + (S.students[sid] ? ' — ' + S.students[sid].name : '') + (due ? ' (к ' + fmtShort(due) + ')' : '') + ':\n' + text.trim() })} />
       {cur ? <Btn kind="danger" title="Удалить" onPress={remove} /> : null}
     </Screen>
@@ -502,6 +525,25 @@ function TeacherBoard({ ctx, s }) {
   return <Board server={acct.server} lesson={{ room: { id: l.room.id, sk: l.room.tk } }} title={ctx.stuName(l.studentId) + ' · ' + dayTime(l.date, l.time)} onBack={ctx.pop} />;
 }
 
+function TeacherHwBoard({ ctx, s }) {
+  const { J, S, api, acct } = ctx;
+  const h = S.homework[s.id];
+  const [room, setRoom] = useState(h && h.room && h.room.tk ? h.room : null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!h) return;
+    (async () => {
+      try { const r = await api.teacherHwBoard(h.id); setRoom(r); if (!(h.room && h.room.id === r.id)) J.refresh(); }
+      catch (e) { if (e.code !== 'expired') setErr(e.message); }
+    })();
+  }, []);
+  if (!h) return <Screen><Btn small title="← Назад" onPress={ctx.pop} /><T>Задание не найдено.</T></Screen>;
+  if (!room) return <Screen><Btn small title="← Назад" onPress={ctx.pop} /><Err>{err}</Err>{err ? null : <ActivityIndicator />}</Screen>;
+  const setSt = async (status) => { if (await ctx.act(J.put('homework', Object.assign({}, S.homework[h.id] || h, { status: status })))) ctx.pop(); };
+  const actions = h.status === 'checked' ? null : [{ title: 'На доработку', onPress: () => setSt('returned') }, { title: 'Принять', kind: 'primary', onPress: () => setSt('checked') }];
+  return <Board server={acct.server} lesson={{ room: { id: room.id, sk: room.tk } }} title={ctx.stuName(h.studentId) + ' · домашка'} onBack={ctx.pop} actions={actions} />;
+}
+
 /* ---------- настройки ---------- */
 function Settings({ ctx, onLogout, onPassword }) {
   const { acct } = ctx;
@@ -511,6 +553,7 @@ function Settings({ ctx, onLogout, onPassword }) {
       <H1>Настройки</H1>
       <Card><T bold>{acct.name}</T><T muted>Учитель · логин: {acct.login}</T><T muted size={13}>{acct.server}</T></Card>
       <ThemePick />
+      <NotifyPick teacher />
       <Btn title="Синхронизировать сейчас" onPress={() => ctx.act(ctx.J.refreshStrict(), 'Синхронизировано')} />
       <Btn title="Сменить пароль" onPress={() => { ctx.pop(); onPassword(); }} />
       <Btn kind="danger" title="Выйти из аккаунта" onPress={onLogout} />
