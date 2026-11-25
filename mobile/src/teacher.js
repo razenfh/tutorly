@@ -6,6 +6,7 @@ import { Screen, T, H1, H3, Card, Btn, Field, Chip, Err, Pick, Check, row, useTh
 import { Board } from './screens';
 import { NotifyPick } from './NotifyPick';
 import { initNotifications, syncNotifications } from './notify';
+import { loadSchedMode, saveSchedMode } from './store';
 import { ymd, parseYmd, dayTime, fmtShort, fmtDM, byStart, lessonStart, lessonEnd, endTime, nextDays, dayChip, normTime } from './util';
 
 const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
@@ -20,6 +21,11 @@ export default function TeacherApp({ acct, api, onLogout, onPassword }) {
   const [, force] = useReducer((x) => x + 1, 0);
   const [tab, setTab] = useState('schedule');
   const [week, setWeek] = useState(startOfWeek(new Date()));
+  const [mode, setModeState] = useState('list');
+  const [cal, setCal] = useState(monthStart(new Date()));
+  const [sel, setSel] = useState(ymd(new Date()));
+  useEffect(() => { loadSchedMode().then(setModeState); }, []);
+  const setMode = useCallback((m) => { setModeState(m); saveSchedMode(m); }, []);
   const [stack, setStack] = useState([]);
   const S = J.S;
 
@@ -54,7 +60,7 @@ export default function TeacherApp({ acct, api, onLogout, onPassword }) {
   const lessons = () => Object.values(S.lessons);
   const stuName = (id) => (S.students[id] && S.students[id].name) || 'Без ученика';
   const pending = () => Object.values(S.requests).filter((q) => q.status === 'pending' && S.lessons[q.lessonId] && S.students[q.studentId]).sort((a, b) => (a.created || 0) - (b.created || 0));
-  const ctx = { J, S, api, acct, act, push, pop, students, activeStudents, lessons, stuName, pending, setTab, setWeek };
+  const ctx = { J, S, api, acct, act, push, pop, students, activeStudents, lessons, stuName, pending, setTab, setWeek, mode, setMode, cal, setCal, sel, setSel };
 
   const top = stack[stack.length - 1];
   if (top) {
@@ -111,27 +117,115 @@ function Top({ ctx, title }) {
 function ErrBar({ ctx }) { return ctx.J.st.error ? <Err>{'Нет синхронизации: ' + ctx.J.st.error}</Err> : null; }
 
 /* ---------- расписание ---------- */
+const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+/* Сетка месяца: в клетке число и цветные точки уроков (до четырёх) */
+function MonthGrid({ month, sel, byDay, onSelect }) {
+  const t = useTheme();
+  const mo = month.getMonth(), todayK = ymd(new Date());
+  const first = startOfWeek(month), end = addDays(startOfWeek(new Date(month.getFullYear(), mo + 1, 0)), 6);
+  const cells = [];
+  for (let d = first; d <= end; d = addDays(d, 1)) cells.push(d);
+  const color = (l) => (l.status === 'cancelled' ? t.line : l.status === 'done' ? (l.paid ? t.ok : t.red) : isPast(l) ? t.red : t.muted);
+  return (
+    <View style={{ borderWidth: 1, borderColor: t.line, borderRadius: 10, backgroundColor: t.surface, overflow: 'hidden' }}>
+      <View style={{ flexDirection: 'row' }}>
+        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((w) => <View key={w} style={{ width: '14.2857%', paddingVertical: 6, alignItems: 'center' }}><T muted size={11} bold>{w}</T></View>)}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {cells.map((d) => {
+          const k = ymd(d), ls = (byDay[k] || []).slice().sort(byStart), out = d.getMonth() !== mo, isSel = k === sel, isToday = k === todayK;
+          return (
+            <Pressable key={k} onPress={() => onSelect(k)} accessibilityLabel={fmtDM(d) + (ls.length ? ', уроков: ' + ls.length : '')}
+              style={[{ width: '14.2857%', minHeight: 54, alignItems: 'center', paddingTop: 5, gap: 4, backgroundColor: out ? t.soft : t.surface }, isSel ? { borderWidth: 2, borderColor: t.accent, borderRadius: 6 } : { borderTopWidth: 1, borderColor: t.line }]}>
+              <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: isToday ? t.accent : 'transparent' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: isToday ? t.accentInk : out ? t.muted : t.ink }}>{d.getDate()}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 3, paddingHorizontal: 2 }}>
+                {ls.slice(0, 4).map((l) => <View key={l.id} style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color(l) }} />)}
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function Schedule({ ctx, week }) {
   const t = useTheme();
-  const { J, S } = ctx;
+  const { J, S, mode, cal, sel } = ctx;
   const k1 = ymd(week), k2 = ymd(addDays(week, 6));
   const unmarked = ctx.lessons().filter((l) => l.status === 'planned' && isPast(l)).sort(byStart);
   const pr = ctx.pending();
+  const all = ctx.lessons();
   const days = [];
   for (let i = 0; i < 7; i++) {
     const d = ymd(addDays(week, i));
-    days.push([d, ctx.lessons().filter((l) => l.date === d).sort(byStart)]);
+    days.push([d, all.filter((l) => l.date === d).sort(byStart)]);
   }
-  const live = ctx.lessons().filter((l) => l.date >= k1 && l.date <= k2 && l.status !== 'cancelled');
+  const live = all.filter((l) => l.date >= k1 && l.date <= k2 && l.status !== 'cancelled');
   const wk = fmtDM(week) + ' – ' + fmtDM(addDays(week, 6));
   const toggle = (l, patch) => ctx.act(J.put('lessons', Object.assign({}, l, patch)));
+  const lessonCard = (l) => (
+    <Card key={l.id} onPress={() => ctx.push({ n: 'lesson', id: l.id })} style={l.status === 'cancelled' ? { opacity: 0.6 } : null}>
+      <T bold>{l.time + '–' + endTime(l) + ' · ' + ctx.stuName(l.studentId)}</T>
+      {l.topic ? <T>{l.topic}</T> : null}
+      {l.status === 'cancelled' ? <T muted size={13}>{(l.movedTo ? 'Перенесён на ' + dayTime(l.movedTo, l.movedToTime) : 'Отменён') + (l.reason ? '. ' + l.reason : '')}</T> : (
+        <View style={row}>
+          <Chip title={l.status === 'done' ? '✓ Проведён' : 'Проведён?'} on={l.status === 'done'} onPress={() => toggle(l, { status: l.status === 'done' ? 'planned' : 'done' })} />
+          <Chip title={l.paid ? '✓ Оплачен' : 'Оплачен?'} on={!!l.paid} onPress={() => toggle(l, { paid: !l.paid })} />
+          {l.room ? <T muted size={13}>доска</T> : null}
+        </View>
+      )}
+    </Card>
+  );
+  const showDay = (k) => { ctx.setWeek(startOfWeek(parseYmd(k))); ctx.setCal(monthStart(parseYmd(k))); ctx.setSel(k); };
+  const modeSwitch = (
+    <View style={row}>
+      <Chip title="Список" on={mode !== 'cal'} onPress={() => ctx.setMode('list')} />
+      <Chip title="Календарь" on={mode === 'cal'} onPress={() => ctx.setMode('cal')} />
+    </View>
+  );
+  const banners = (
+    <>
+      {pr.length ? <Card><T bold>{'Запросы на перенос: ' + pr.length}</T><Btn small kind="primary" title="Разобрать" onPress={() => ctx.push({ n: 'requests' })} /></Card> : null}
+      {unmarked.length ? <Card><T bold>{'Без отметки: ' + unmarked.length}</T><T muted size={13}>Прошедшие уроки, не отмеченные как проведённые или отменённые.</T>
+        <Btn small title="Показать" onPress={() => showDay(unmarked[0].date)} /></Card> : null}
+    </>
+  );
+
+  if (mode === 'cal') {
+    const mk = ymd(cal).slice(0, 7), byDay = {};
+    all.forEach((l) => { (byDay[l.date] = byDay[l.date] || []).push(l); });
+    const inM = all.filter((l) => l.date.slice(0, 7) === mk && l.status !== 'cancelled');
+    const selDate = parseYmd(sel), selLessons = (byDay[sel] || []).slice().sort(byStart);
+    return (
+      <Screen onRefresh={() => J.refresh()} refreshing={false}>
+        <Top ctx={ctx} title="Расписание" />
+        <ErrBar ctx={ctx} />
+        {banners}
+        {modeSwitch}
+        <View style={[row, { justifyContent: 'space-between' }]}>
+          <Btn small title="←" onPress={() => ctx.setCal(new Date(cal.getFullYear(), cal.getMonth() - 1, 1))} />
+          <View style={{ alignItems: 'center' }}><T bold>{MONTH_NAMES[cal.getMonth()] + ' ' + cal.getFullYear()}</T><T muted size={13}>{inM.length + ' ур. · проведено ' + inM.filter((l) => l.status === 'done').length}</T></View>
+          <Btn small title="→" onPress={() => ctx.setCal(new Date(cal.getFullYear(), cal.getMonth() + 1, 1))} />
+        </View>
+        <View style={row}><Btn small title="Сегодня" onPress={() => showDay(ymd(new Date()))} /><Btn small kind="primary" title="+ Новый урок" onPress={() => ctx.push({ n: 'lesson', id: '', date: sel })} /></View>
+        <MonthGrid month={cal} sel={sel} byDay={byDay} onSelect={ctx.setSel} />
+        <T bold muted style={{ marginTop: 6 }}>{dayTime(sel) + (sel === ymd(new Date()) ? ' · сегодня' : '')}</T>
+        {selLessons.length ? selLessons.map(lessonCard) : <T muted size={13}>Уроков нет</T>}
+      </Screen>
+    );
+  }
+
   return (
     <Screen onRefresh={() => J.refresh()} refreshing={false}>
       <Top ctx={ctx} title="Расписание" />
       <ErrBar ctx={ctx} />
-      {pr.length ? <Card><T bold>{'Запросы на перенос: ' + pr.length}</T><Btn small kind="primary" title="Разобрать" onPress={() => ctx.push({ n: 'requests' })} /></Card> : null}
-      {unmarked.length ? <Card><T bold>{'Без отметки: ' + unmarked.length}</T><T muted size={13}>Прошедшие уроки, не отмеченные как проведённые или отменённые.</T>
-        <Btn small title="Показать" onPress={() => ctx.setWeek(startOfWeek(parseYmd(unmarked[0].date)))} /></Card> : null}
+      {banners}
+      {modeSwitch}
       <View style={[row, { justifyContent: 'space-between' }]}>
         <Btn small title="←" onPress={() => ctx.setWeek(addDays(week, -7))} />
         <View style={{ alignItems: 'center' }}><T bold>{wk}</T><T muted size={13}>{live.length + ' ур. · проведено ' + live.filter((l) => l.status === 'done').length}</T></View>
@@ -141,19 +235,7 @@ function Schedule({ ctx, week }) {
       {days.map(([d, ls]) => (
         <View key={d} style={{ gap: 8 }}>
           <T bold muted style={{ marginTop: 6 }}>{dayTime(d) + (d === ymd(new Date()) ? ' · сегодня' : '')}</T>
-          {ls.length ? ls.map((l) => (
-            <Card key={l.id} onPress={() => ctx.push({ n: 'lesson', id: l.id })} style={l.status === 'cancelled' ? { opacity: 0.6 } : null}>
-              <T bold>{l.time + '–' + endTime(l) + ' · ' + ctx.stuName(l.studentId)}</T>
-              {l.topic ? <T>{l.topic}</T> : null}
-              {l.status === 'cancelled' ? <T muted size={13}>{(l.movedTo ? 'Перенесён на ' + dayTime(l.movedTo, l.movedToTime) : 'Отменён') + (l.reason ? '. ' + l.reason : '')}</T> : (
-                <View style={row}>
-                  <Chip title={l.status === 'done' ? '✓ Проведён' : 'Проведён?'} on={l.status === 'done'} onPress={() => toggle(l, { status: l.status === 'done' ? 'planned' : 'done' })} />
-                  <Chip title={l.paid ? '✓ Оплачен' : 'Оплачен?'} on={!!l.paid} onPress={() => toggle(l, { paid: !l.paid })} />
-                  {l.room ? <T muted size={13}>доска</T> : null}
-                </View>
-              )}
-            </Card>
-          )) : <T muted size={13}>Уроков нет</T>}
+          {ls.length ? ls.map(lessonCard) : <T muted size={13}>Уроков нет</T>}
         </View>
       ))}
     </Screen>

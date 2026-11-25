@@ -41,7 +41,12 @@ const KINDS=['students','lessons','homework','requests'];
 const S={students:{},lessons:{},homework:{},requests:{},prefs:{currency:'₴'},tomb:{},sync:{sent:0,rev:0,epoch:''},acct:null,owner:'',local:false};
 const LS='journal-repetitora-v1';
 let sync='ok';
-const view={tab:'schedule',week:startOfWeek(new Date()),month:new Date(new Date().getFullYear(),new Date().getMonth(),1)};
+const view={tab:'schedule',week:startOfWeek(new Date()),month:new Date(new Date().getFullYear(),new Date().getMonth(),1),
+  mode:(()=>{try{return localStorage.getItem('sched-mode-v1')==='cal'?'cal':'list'}catch(e){return 'list'}})(),
+  cal:new Date(new Date().getFullYear(),new Date().getMonth(),1),sel:''};
+view.sel=ymd(new Date());
+/* показать в календаре месяц и день этой даты */
+const showInCal=k=>{const d=parseYmd(k);view.cal=new Date(d.getFullYear(),d.getMonth(),1);view.sel=k};
 
 const money=n=>new Intl.NumberFormat('ru-RU').format(Math.round(num(n)))+NB+S.prefs.currency;
 const studentsArr=()=>Object.values(S.students).sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru'));
@@ -247,6 +252,33 @@ function lessonCard(l){
     +'<div class="l-actions">'+acts+'<span class="l-price">'+money(l.price)+'</span></div></div></article>';
 }
 
+/* календарь месяца: сетка дней с уроками, под ней уроки выбранного дня */
+function calView(){
+  const m=view.cal, mo=m.getMonth(), todayK=ymd(new Date()), mk=ymd(m).slice(0,7);
+  const first=startOfWeek(m), end=addDays(startOfWeek(new Date(m.getFullYear(),mo+1,0)),6);
+  const all=lessonsArr(), byDay={};
+  all.forEach(l=>{(byDay[l.date]=byDay[l.date]||[]).push(l)});
+  const live=all.filter(l=>l.date.slice(0,7)===mk&&l.status!=='cancelled'), done=live.filter(l=>l.status==='done');
+  const debt=done.filter(l=>!l.paid).reduce((s,l)=>s+num(l.price),0);
+  let h='<div class="weeknav"><button class="icon-btn" data-a="calPrev" aria-label="Предыдущий месяц">'+svg(P.left)+'</button><div class="label">'+monthWord(m)+' '+m.getFullYear()+'</div><button class="icon-btn" data-a="calNext" aria-label="Следующий месяц">'+svg(P.right)+'</button></div>';
+  h+='<div class="btn-row" style="margin-bottom:12px"><button class="btn small" data-a="calToday">Сегодня</button><button class="btn small" data-a="addLesson" data-date="'+esc(view.sel)+'">'+svg(P.plus)+'Новый урок</button></div>';
+  h+='<div class="card stats"><div><span>Уроков</span><b>'+live.length+'</b></div><div><span>Проведено</span><b>'+done.length+'</b></div><div><span>Не оплачено</span><b class="'+(debt>0?'bad':'')+'">'+money(debt)+'</b></div></div>';
+  h+='<div class="cal" role="grid">'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(w=>'<div class="cal-w" role="columnheader">'+w+'</div>').join('');
+  for(let d=first;d<=end;d=addDays(d,1)){
+    const k=ymd(d), ls=(byDay[k]||[]).slice().sort(byStart);
+    const chip=l=>{
+      const st=l.status==='cancelled'?'cancelled':l.status==='done'?(l.paid?'done':'warn'):(isPast(l)?'warn':'');
+      return '<button class="cal-l '+st+'" data-a="editLesson" data-id="'+l.id+'" title="'+esc(l.time+' · '+stuName(l.studentId))+'"><b>'+esc(l.time)+'</b> <span>'+esc(stuName(l.studentId))+'</span></button>';
+    };
+    h+='<div class="cal-d'+(d.getMonth()!==mo?' out':'')+(k===todayK?' today':'')+(k===view.sel?' sel':'')+'" data-a="selDay" data-date="'+k+'" role="gridcell" aria-label="'+esc(fmtDM(d))+(ls.length?', уроков: '+ls.length:'')+'"><span class="cal-n">'+d.getDate()+'</span><div class="cal-ls">'+ls.slice(0,3).map(chip).join('')+(ls.length>3?'<span class="cal-more">+'+(ls.length-3)+'</span>':'')+'</div></div>';
+  }
+  h+='</div>';
+  const sd=parseYmd(view.sel), sl=(byDay[view.sel]||[]).slice().sort(byStart);
+  h+='<section class="day cal-day"><div class="day-h"><h3>'+fmtWd(sd)+'<small>'+fmtDM(sd)+'</small></h3><button class="icon-btn" data-a="addLesson" data-date="'+esc(view.sel)+'" aria-label="Добавить урок: '+esc(fmtDM(sd))+'">'+svg(P.plus)+'</button></div>'
+    +(sl.length?sl.map(lessonCard).join(''):'<p class="muted">В этот день уроков нет.</p>')+'</section>';
+  return h;
+}
+
 function viewSchedule(){
   if(!Object.keys(S.students).length&&!Object.keys(S.lessons).length) return onboarding();
   const ws=view.week, we=addDays(ws,6), k1=ymd(ws), k2=ymd(we), todayK=ymd(new Date());
@@ -259,6 +291,8 @@ function viewSchedule(){
   const pr=pendingReqs();
   if(pr.length) h+='<div class="banner"><p><b>Запросы на перенос: '+pr.length+'</b><br><span class="muted">Ученики и родители просят перенести урок.</span></p><button class="btn small primary" data-a="openRequests">Разобрать</button></div>';
   if(unmarked.length) h+='<div class="banner"><p><b>Без отметки: '+unmarked.length+'</b><br><span class="muted">Прошедшие уроки, которые не отмечены как проведённые или отменённые.</span></p><button class="btn small" data-a="gotoUnmarked">Показать</button></div>';
+  h+='<div class="modes" role="tablist" aria-label="Вид расписания"><button role="tab" data-a="schedMode" data-mode="list" aria-selected="'+(view.mode!=='cal')+'">Список</button><button role="tab" data-a="schedMode" data-mode="cal" aria-selected="'+(view.mode==='cal')+'">Календарь</button></div>';
+  if(view.mode==='cal') return h+calView();
   h+='<div class="weeknav"><button class="icon-btn" data-a="prevWeek" aria-label="Предыдущая неделя">'+svg(P.left)+'</button><div class="label">'+weekLabel(ws,we)+'</div><button class="icon-btn" data-a="nextWeek" aria-label="Следующая неделя">'+svg(P.right)+'</button></div>';
   h+='<div class="btn-row" style="margin-bottom:12px"><button class="btn small" data-a="today">Сегодня</button><button class="btn small" data-a="addLesson">'+svg(P.plus)+'Новый урок</button></div>';
   h+='<div class="card stats"><div><span>Уроков</span><b>'+live.length+'</b></div><div><span>Проведено</span><b>'+done.length+'</b></div><div><span>Не оплачено</span><b class="'+(debt>0?'bad':'')+'">'+money(debt)+'</b></div></div>';
@@ -442,7 +476,7 @@ function openLesson(id,date,force){
         put('lessons',o);
       }
     }else put('lessons',Object.assign({},l,base));
-    view.week=startOfWeek(parseYmd(d)); view.tab='schedule';
+    view.week=startOfWeek(parseYmd(d)); view.tab='schedule'; showInCal(d);
   }});
 }
 function onLessonStudent(){
@@ -807,6 +841,11 @@ const A={
   today:()=>{view.week=startOfWeek(new Date());render()},
   prevMonth:()=>{view.month=new Date(view.month.getFullYear(),view.month.getMonth()-1,1);render()},
   nextMonth:()=>{view.month=new Date(view.month.getFullYear(),view.month.getMonth()+1,1);render()},
+  schedMode:(d)=>{view.mode=d.mode==='cal'?'cal':'list';try{localStorage.setItem('sched-mode-v1',view.mode)}catch(e){}render()},
+  calPrev:()=>{view.cal=new Date(view.cal.getFullYear(),view.cal.getMonth()-1,1);render()},
+  calNext:()=>{view.cal=new Date(view.cal.getFullYear(),view.cal.getMonth()+1,1);render()},
+  calToday:()=>{showInCal(ymd(new Date()));render()},
+  selDay:(d)=>{view.sel=d.date;render()},
   addLesson:(d)=>openLesson(null,d.date),
   editLesson:(d)=>openLesson(d.id),
   toggleDone:(d)=>{const l=S.lessons[d.id];if(l)put('lessons',Object.assign({},l,{status:l.status==='done'?'planned':'done'}))},
@@ -847,7 +886,7 @@ const A={
   openRequests:()=>openRequests(),
   reqAccept:(d)=>answerReq(d.id,'accepted'),
   reqDecline:(d)=>answerReq(d.id,'declined'),
-  gotoUnmarked:()=>{const u=lessonsArr().filter(l=>l.status==='planned'&&isPast(l)).sort(byStart);if(u.length){view.week=startOfWeek(parseYmd(u[0].date));render();window.scrollTo(0,0)}},
+  gotoUnmarked:()=>{const u=lessonsArr().filter(l=>l.status==='planned'&&isPast(l)).sort(byStart);if(u.length){view.week=startOfWeek(parseYmd(u[0].date));showInCal(u[0].date);render();window.scrollTo(0,0)}},
   addStudent:()=>openStudent(),
   editStudent:(d)=>openStudent(d.id),
   demo:()=>{loadDemo();toast('Добавлены примеры. Их можно удалить в настройках.')},
