@@ -1358,11 +1358,12 @@ function syncTick() {
   });
   sy.last.forEach((v, id) => { if (!seen[id]) del.push(id); });
   del.forEach((id) => { sy.last.delete(id); sy.sent.delete(id); });
-  /* Картинку (сотни КБ) отправляем один раз, отдельным сообщением; при перемещении и изменении размера уходят только координаты */
+  /* Картинку (сотни КБ) отправляем один раз, отдельным сообщением; при перемещении и изменении размера уходят только координаты.
+     Сообщение с картинкой тоже нумеруется: если сервер её не примет (нет места), в ack придёт fix и картинка уберётся и у нас */
   const light = [];
   set.forEach((el) => {
     const w = wireEl(sy, el);
-    if (w.k === 'image' && w.src) sy.send({ t: 'ops', set: [w], del: [] }); else light.push(w);
+    if (w.k === 'image' && w.src) sendOps(sy, [w], []); else light.push(w);
   });
   for (let i = 0; i < light.length; i += 200) sendOps(sy, light.slice(i, i + 200), []);
   for (let i = 0; i < del.length; i += 1000) sendOps(sy, [], del.slice(i, i + 1000));
