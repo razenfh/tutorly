@@ -5,8 +5,8 @@
      ADMIN_TOKEN=... node admin.js list
      ADMIN_TOKEN=... node admin.js reset <логин> [новый_пароль]
      ADMIN_TOKEN=... node admin.js delete <логин>
-   Адрес по умолчанию http://127.0.0.1:8787, другой через SERVER=https://... */
-const base = (process.env.SERVER || 'http://127.0.0.1:' + (process.env.PORT || 8787)).replace(/\/+$/, '');
+   Адрес по умолчанию http://127.0.0.1:8080 (или PORT), другой через SERVER=https://... */
+const base = (process.env.SERVER || 'http://127.0.0.1:' + (process.env.PORT || 8080)).replace(/\/+$/, '');
 const token = process.env.ADMIN_TOKEN;
 const [cmd, login, pw] = process.argv.slice(2);
 if (!token || !cmd) { console.error('Нужен ADMIN_TOKEN и команда: list | reset <логин> [пароль] | delete <логин>'); process.exit(1); }

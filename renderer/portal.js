@@ -91,11 +91,17 @@ function expired() {
 function stopTimer() { clearInterval(timer); timer = 0; }
 function startTimer() {
   stopTimer();
-  timer = setInterval(() => { if (!document.hidden && (P.view === 'home' || P.view === 'course')) loadCourses(true); }, 30000);
+  timer = setInterval(() => { if (!document.hidden && (P.view === 'home' || P.view === 'course')) loadCourses(true, true); }, 30000);
 }
-async function loadCourses(silent) {
-  if (P.busy) return;
-  P.busy = true;
+/* Загрузка курсов не трогает P.busy: это флаг форм, иначе фоновое обновление глушило бы нажатия «Присоединиться» и др.
+   Явный вызов дожидается уже идущей загрузки и делает свою, чтобы получить свежие данные; фоновый (poll) просто пропускается. */
+let coursesRun = null;
+async function loadCourses(silent, poll) {
+  while (coursesRun) { if (poll) return; await coursesRun; }
+  coursesRun = loadCoursesNow(silent);
+  try { await coursesRun; } finally { coursesRun = null; }
+}
+async function loadCoursesNow(silent) {
   try {
     const j = await api('GET', '/api/my/courses');
     P.courses = j.courses || []; P.loaded = true;
@@ -104,7 +110,7 @@ async function loadCourses(silent) {
     else if (silent && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) render();
   } catch (e) {
     if (!silent && e.code !== 'expired') { P.err = e.message; render(); }
-  } finally { P.busy = false; }
+  }
 }
 function showHome() { P.view = 'home'; P.err = ''; P.join = false; show(); render(); startTimer(); loadCourses(false); }
 

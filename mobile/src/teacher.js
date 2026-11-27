@@ -325,7 +325,7 @@ function MoveForm({ ctx, s }) {
     }
     if (!okDate(date) || !tm) return setErr('Укажите новую дату и время.');
     if (date === l.date && tm === l.time) return setErr('Выберите другую дату или время.');
-    const nl = Object.assign({}, l, { id: J.uid(), date: date, time: tm, status: 'planned', paid: keep, note: '', reason: '', movedTo: '', movedToTime: '', movedFrom: l.date, movedFromTime: l.time, room: undefined });
+    const nl = Object.assign({}, l, { id: J.uid(), date: date, time: tm, status: 'planned', paid: keep, note: '', reason: '', movedTo: '', movedToTime: '', movedFrom: l.date, movedFromTime: l.time, room: undefined, board: false });
     delete nl.room;
     if (await ctx.act(J.putMany([['lessons', Object.assign({}, l, { status: 'cancelled', paid: false, reason: r, movedTo: date, movedToTime: tm })], ['lessons', nl]]))) { ctx.pop(); ctx.pop(); }
   }

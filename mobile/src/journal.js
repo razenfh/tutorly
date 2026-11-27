@@ -25,14 +25,32 @@ export function createJournal(api, rand) {
       if (!S[t.k][t.id] && num(t.u) > num(tomb[key])) tomb[key] = num(t.u);
     });
   }
-  function reset() { KINDS.forEach((k) => { S[k] = {}; }); tomb = {}; rev = 0; epoch = ''; }
+  function reset() { KINDS.forEach((k) => { S[k] = {}; }); tomb = {}; rev = 0; epoch = ''; unsent.clear(); }
 
-  async function exchange(changes) {
+  /* Локальные правки, которые сервер ещё не принял (ключ 'вид/id'). Каждый обмен отправляет их заново,
+     поэтому правка, сделанная без связи, уйдёт при следующем обновлении, а не потеряется. */
+  const unsent = new Set();
+  function outgoing() {
+    const ch = { tomb: [] }, sent = new Map();
+    unsent.forEach((key) => {
+      const i = key.indexOf('/'), k = key.slice(0, i), id = key.slice(i + 1);
+      if (S[k][id]) { (ch[k] = ch[k] || []).push(S[k][id]); sent.set(key, num(S[k][id].u)); }
+      else if (tomb[key]) { ch.tomb.push({ k: k, id: id, u: tomb[key] }); sent.set(key, num(tomb[key])); }
+      else unsent.delete(key);
+    });
+    return { ch: ch, sent: sent };
+  }
+  const stampOf = (key) => { const i = key.indexOf('/'), r = S[key.slice(0, i)][key.slice(i + 1)]; return r ? num(r.u) : num(tomb[key]); };
+
+  async function exchange() {
     for (let i = 0; i < 2; i++) {
-      const j = await api.sync(rev, changes || {});
-      if (epoch && j.epoch !== epoch) { reset(); changes = {}; continue; }
+      const out = outgoing();
+      const j = await api.sync(rev, out.ch);
+      if (epoch && j.epoch !== epoch) { reset(); continue; }
       merge(j.changes || {});
       epoch = String(j.epoch || ''); rev = num(j.rev);
+      // принятое сервером больше не отправляем; если запись успели изменить, пока шёл запрос, она остаётся в очереди
+      out.sent.forEach((u, key) => { if (stampOf(key) === u) unsent.delete(key); });
       return;
     }
     throw new Error('Сервер ответил неожиданно. Попробуйте ещё раз.');
@@ -54,28 +72,28 @@ export function createJournal(api, rand) {
   return {
     S: S, st: st, uid: uid,
     subscribe: (f) => { subs.add(f); return () => subs.delete(f); },
-    refresh: () => wrap(() => exchange({})).catch(() => {}),
-    refreshStrict: () => wrap(() => exchange({})),
+    refresh: () => wrap(() => exchange()).catch(() => {}),
+    refreshStrict: () => wrap(() => exchange()),
     clear: () => { reset(); st.loaded = false; emit(); },
+    pending: () => unsent.size,
     put(kind, obj) {
       obj = Object.assign({}, obj);
-      obj.u = stamp(S[kind][obj.id]); delete tomb[kind + '/' + obj.id]; S[kind][obj.id] = obj; emit();
+      obj.u = stamp(S[kind][obj.id]); delete tomb[kind + '/' + obj.id]; S[kind][obj.id] = obj; unsent.add(kind + '/' + obj.id); emit();
       const o = obj;
-      return wrap(() => exchange({ [kind]: [o] })).then(() => o);
+      return wrap(() => exchange()).then(() => o);
     },
     del(kind, id) {
       const old = S[kind][id], u = stamp(old);
-      tomb[kind + '/' + id] = u; delete S[kind][id]; emit();
-      return wrap(() => exchange({ tomb: [{ k: kind, id: id, u: u }] }));
+      tomb[kind + '/' + id] = u; delete S[kind][id]; unsent.add(kind + '/' + id); emit();
+      return wrap(() => exchange());
     },
     putMany(list) { // list: [[kind,obj],...] одним запросом
-      const ch = {};
       list.forEach(([kind, obj]) => {
         obj = Object.assign({}, obj); obj.u = stamp(S[kind][obj.id]); delete tomb[kind + '/' + obj.id]; S[kind][obj.id] = obj;
-        (ch[kind] = ch[kind] || []).push(obj);
+        unsent.add(kind + '/' + obj.id);
       });
       emit();
-      return wrap(() => exchange(ch));
+      return wrap(() => exchange());
     },
   };
 }

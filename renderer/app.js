@@ -530,7 +530,7 @@ function openMove(id){
     if(!r) return showErr('Напишите причину: ученик и родители её увидят.')||false;
     const keep=!!($('#m-paid')&&$('#m-paid').checked);
     put('lessons',Object.assign({},l,{status:'cancelled',paid:false,reason:r,movedTo:d,movedToTime:t}));
-    put('lessons',Object.assign({},l,{id:uid(),date:d,time:t,status:'planned',paid:keep,note:'',reason:'',movedTo:'',movedToTime:'',movedFrom:l.date,movedFromTime:l.time}));
+    put('lessons',Object.assign({},l,{id:uid(),date:d,time:t,status:'planned',paid:keep,note:'',reason:'',movedTo:'',movedToTime:'',movedFrom:l.date,movedFromTime:l.time,room:undefined,board:false}));
     toast('Урок перенесён');
   }});
 }

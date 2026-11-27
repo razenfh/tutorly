@@ -414,13 +414,19 @@ function start(opts) {
         sendJson(res, 200, v);
         return;
       }
+      /* ошибка внутри обработчика (например, лимит досок) должна стать ответом, а не необработанным отказом промиса, который роняет процесс */
+      const vFail = (e) => {
+        const code = e && e.code;
+        if (!STATUS[code]) console.error('viewer', e && e.message);
+        if (!res.headersSent) sendJson(res, STATUS[code] || 500, { error: STATUS[code] ? code : 'server', message: STATUS[code] ? e.message : 'Ошибка сервера.' }, code === 'toobig');
+      };
       if (req.method === 'POST' && vm[3] && vm[4]) {
         readJson(req, 2000).then(() => {
           const stu = j && j.studentByKey(vm[1]), h = stu && j.hwRec(vm[3]);
           if (!h || h.studentId !== stu.id) { failLimit.hit(ip); sendJson(res, 404, { error: 'none' }); return; }
           const r2 = ensureHwRoom(tid, vm[3]);
           sendJson(res, 200, { id: r2.id, sk: r2.sk });
-        }, () => sendJson(res, 400, { error: 'json' }));
+        }).catch(vFail);
         return;
       }
       if (req.method === 'POST' && vm[3]) {
@@ -429,7 +435,7 @@ function start(opts) {
           if (!h) { failLimit.hit(ip); sendJson(res, 404, { error: 'none' }); return; }
           pushHwPerms(tid);
           sendJson(res, 200, h);
-        }, () => sendJson(res, 400, { error: 'json' }));
+        }).catch(vFail);
         return;
       }
       res.writeHead(405); res.end();
@@ -581,7 +587,8 @@ function start(opts) {
     let u;
     try { u = new URL(req.url, 'http://localhost'); } catch (e) { socket.destroy(); return; }
     if (u.pathname !== '/ws') { socket.destroy(); return; }
-    wss.handleUpgrade(req, socket, head, (ws) => onConnect(ws, u));
+    // с noServer событие connection само не возникает, а на нём держится проверка «жив ли клиент» (isAlive)
+    wss.handleUpgrade(req, socket, head, (ws) => { wss.emit('connection', ws, req); onConnect(ws, u); });
   });
   const beat = setInterval(() => {
     wss.clients.forEach((ws) => {
